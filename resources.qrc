@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/new/icon">
+        <file>s_black.png</file>
+        <file>reload.png</file>
+        <file>settings.png</file>
+        <file>relation.png</file>
+    </qresource>
+</RCC>
