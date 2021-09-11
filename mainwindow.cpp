@@ -82,15 +82,6 @@ void MainWindow::strat_download()
 
         request.setHeader(QNetworkRequest::ContentTypeHeader,QString("application/json"));
         request.setUrl(url);
-        //qDebug() << manager->children();
-        //if (runonce < 1) manager->post(request,postDataSize);
-        /*qDebug() << request.url().toString(); //output the url
-        const QList<QByteArray>& rawHeaderList(request.rawHeaderList());
-        foreach (QByteArray rawHeader, rawHeaderList) { //traverse and output the header
-          qDebug() << request.rawHeader(rawHeader);
-        }*/
-        //if (runonce < 1) manager->post(request,arg.toUtf8());
-        //qDebug() << request.header(QNetworkRequest::UserAgentHeader);
         if (runonce < 1) manager->get(request);
     }
 }
