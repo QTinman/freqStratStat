@@ -1,2 +1,2 @@
 # freqStratStat
-The program reads your freqUI api and dislplays in table the strats in the freqTrade db and performance.
+The program reads your freqUI api and dislplays all strategies in a table from the freqTrade db and shows performance.
