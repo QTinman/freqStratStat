@@ -1,6 +1,15 @@
 #include "relationdialog.h"
 #include "ui_relationdialog.h"
 #include "mainwindow.h"
+#include <QStyledItemDelegate>
+
+class DateDelegate: public QStyledItemDelegate{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    QString displayText(const QVariant &value, const QLocale &locale) const{
+        return locale.toString(value.toDateTime(), "d MMM - hh:mm");
+    }
+};
 
 int tablecolumns=8;
 relationDialog::relationDialog(QWidget *parent) :
@@ -37,6 +46,7 @@ void relationDialog::load_model()
     int row=0,i=0,col, rows=0;
     double cash_total=0, pr_total=0;
     QModelIndex index;
+    QDateTime tradedate;
     while (i < trademodel.length()-1) {
         if (strat == trademodel[i]) rows++;
         i++;
@@ -52,7 +62,14 @@ void relationDialog::load_model()
             pr_total+=trademodel[i+4].toDouble();
             cash_total+=trademodel[i+5].toDouble();
          }
-         if (col <= 4 && add) model->setData(index,trademodel[i+1]);
+         if (col <= 4 && add) {
+             tradedate=QDateTime(QDate(trademodel[i+1].mid(0,4).toInt(),trademodel[i+1].mid(5,2).toInt(),trademodel[i+1].mid(8,2).toInt()),QTime(trademodel[i+1].mid(11,2).toInt(),trademodel[i+1].mid(14,2).toInt(),0));
+             if (col == 0) model->setData(index,tradedate);
+             if (col == 1) model->setData(index,tradedate);
+             if (col == 2 || col == 3 || col == 4) model->setData(index,trademodel[i+1]);
+             ui->tableView->setItemDelegateForColumn(0,  new DateDelegate);
+             ui->tableView->setItemDelegateForColumn(1,  new DateDelegate);
+         }
          if (col >= 5 && col < 7 && add) model->setData(index,trademodel[i+1].toDouble());
          model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
          i++;
@@ -61,7 +78,7 @@ void relationDialog::load_model()
        if (add) row++;
        add=false;
     }
-    index=model->index(rows,1,QModelIndex());
+    index=model->index(rows,2,QModelIndex());
     model->setData(index,"Total:");
     model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
     index=model->index(rows,5,QModelIndex());

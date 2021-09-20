@@ -3,6 +3,15 @@
 
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
+#include <QStyledItemDelegate>
+
+class DateDelegate: public QStyledItemDelegate{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    QString displayText(const QVariant &value, const QLocale &locale) const{
+        return locale.toString(value.toDateTime(), "d MMM - hh:mm");
+    }
+};
 
 QString appgroup="stratreader",strat,timeframe;
 QDateTime marketdate;
@@ -39,7 +48,9 @@ MainWindow::MainWindow(QWidget *parent)
     this->setWindowTitle("Strategy Statistics");
     connect(ui->servers, QOverload<int>::of(&QComboBox::currentIndexChanged),
             [=](int index){ combo_refresh(index); });
+
     QStringList modellist = initializemodel();
+    //ui->tableView->setItemDelegateForColumn(2,  new DateDelegate);
     model = new QStandardItemModel(modellist.length()/colums,colums,this);
     model->setRowCount(modellist.length()/colums);
     model->setHeaderData(0, Qt::Horizontal, "Strat", Qt::DisplayRole);
@@ -53,6 +64,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->tableView->setSortingEnabled(true);
     ui->tableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     ui->tableView->sortByColumn(0,Qt::AscendingOrder);
+
 }
 
 
@@ -234,7 +246,8 @@ void MainWindow::strat2table(QByteArray rawtable)
             modeldatalist.append(QString::number(average));
             if (!markets.isEmpty()) marketthen = readmarket(close_date,start_date);
             if (!markets.isEmpty()) marketnow = readmarket(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"),tradestartnow.toString("yyyy-MM-dd hh:mm:ss"));
-            modeldatalist.append(tradestart.toString("d MMM - hh:mm"));
+            //modeldatalist.append(tradestart.toString("d MMM - hh:mm"));
+            modeldatalist.append(tradestart.toString("yyyy-MM-dd hh:mm:ss"));
             modeldatalist.append(QLocale(QLocale::English).toString(avr_percent/average,'F',2));
             modeldatalist.append(QLocale(QLocale::English).toString(avr_profit/average,'F',2));
             modeldatalist.append(QLocale(QLocale::English).toString(marketthen,'F',2));
@@ -251,7 +264,7 @@ void MainWindow::strat2table(QByteArray rawtable)
         if (data["stake_amount"].toDouble()<0.1&&data["stake_amount"].toDouble()>0.001) trailingZeros=5;
         QString opendate =  QDateTime(QDate(data["open_date"].toString().mid(0,4).toInt(),data["open_date"].toString().mid(5,2).toInt(),data["open_date"].toString().mid(8,2).toInt()),QTime(data["open_date"].toString().mid(11,2).toInt(),data["open_date"].toString().mid(14,2).toInt(),0)).toString("d MMM - hh:mm");
         QString closedate =  QDateTime(QDate(data["close_date"].toString().mid(0,4).toInt(),data["close_date"].toString().mid(5,2).toInt(),data["close_date"].toString().mid(8,2).toInt()),QTime(data["close_date"].toString().mid(11,2).toInt(),data["close_date"].toString().mid(14,2).toInt(),0)).toString("d MMM - hh:mm");
-        trademodel  << data["strategy"].toString() << opendate << closedate << data["pair"].toString() << data["sell_reason"].toString()
+        trademodel  << data["strategy"].toString() << data["open_date"].toString() << data["close_date"].toString() << data["pair"].toString() << data["sell_reason"].toString()
                 << QLocale(QLocale::English).toString(data["stake_amount"].toDouble(),'F',trailingZeros)
                 << QLocale(QLocale::English).toString(data["profit_pct"].toDouble(),'F',2)
                 << QLocale(QLocale::English).toString(data["profit_abs"].toDouble(),'F',trailingZeros); //
@@ -283,16 +296,24 @@ void MainWindow::reload_model()
 {
     int row=0,i=0,col;
     QModelIndex index;
+    QDateTime tradestart;
     QStringList modellist = initializemodel();
     model->setRowCount(modellist.length()/colums);
+    // "yyyy-MM-dd hh:mm:ss"
     //qDebug() << modellist.length();
     while (i < modellist.length()-1) {
        for (col=0;col<colums;col++) {
          index=model->index(row,col,QModelIndex());
-         if (col <= 4) model->setData(index,modellist[i]);
+         if (col <= 1) model->setData(index,modellist[i]);
+         if (col == 2){
+            tradestart=QDateTime(QDate(modellist[i].mid(0,4).toInt(),modellist[i].mid(5,2).toInt(),modellist[i].mid(8,2).toInt()),QTime(modellist[i].mid(11,2).toInt(),modellist[i].mid(14,2).toInt(),0));
+            model->setData(index,tradestart);
+         }
+         if (col >= 3) model->setData(index,modellist[i]);
          if (col >= 5) model->setData(index,modellist[i].toDouble());
          if (col >= 6) model->setData(index,modellist[i]);
          model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
+         ui->tableView->setItemDelegateForColumn(2,  new DateDelegate);
          i++;
         }
       row++;
