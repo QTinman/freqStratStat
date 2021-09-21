@@ -7,9 +7,10 @@ settingsDialog::settingsDialog(QWidget *parent) :
 {
     ui->setupUi(this);
     QStringList servers=loadsettings("servers").toStringList();
-    QStringList keys=loadsettings("keys").toStringList();
+    ui->apikey->setText(loadsettings("apikey").toString());
+    ui->markedfrom->setDate(loadsettings("markedfrom").toDate());
+    if (ui->markedfrom->date() < QDate::currentDate().addDays(-2000)) ui->markedfrom->setDate(QDate::currentDate().addDays(-200));
     for(auto & a : servers) ui->servers->append(a);
-    for(auto & a : keys) ui->keys->append(a);
     ui->tradelimits->setValue(loadsettings("tradelimits").toInt());
     if (ui->tradelimits->value() == 0) ui->tradelimits->setValue(500);
 }
@@ -41,11 +42,13 @@ settingsDialog::~settingsDialog()
 void settingsDialog::on_buttonBox_accepted()
 {
     QStringList servers=ui->servers->toPlainText().split("\n");
-    QStringList keys=ui->keys->toPlainText().split("\n");
+
     QSettings appsettings("QTinman",appgroup);
     appsettings.beginGroup(appgroup);
     appsettings.setValue("servers", QVariant::fromValue(servers));
-    appsettings.setValue("keys", QVariant::fromValue(keys));
+
     appsettings.endGroup();
     savesettings("tradelimits",ui->tradelimits->value());
+    savesettings("apikey",ui->apikey->text()); //am9objpwYXNz
+    savesettings("markedfrom",ui->markedfrom->date());
 }

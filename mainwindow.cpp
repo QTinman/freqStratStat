@@ -4,6 +4,9 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
 #include <QStyledItemDelegate>
+#include <QMessageBox>
+#include <QAbstractButton>
+#include <QPushButton>
 
 class DateDelegate: public QStyledItemDelegate{
 public:
@@ -37,8 +40,8 @@ MainWindow::MainWindow(QWidget *parent)
     servers.append(loadsettings("servers").toStringList());
     QStringList keys=loadsettings("keys").toStringList();
     if (keys.isEmpty()) savesettings("keys","API key here");
-
-    QDateTime marketage = QDateTime(QDate::currentDate().addDays(-100),QTime::currentTime());
+    int markedfrom=QDate::currentDate().dayOfYear()-loadsettings("markedfrom").toDate().dayOfYear();
+    QDateTime marketage = QDateTime(QDate::currentDate().addDays(-markedfrom),QTime::currentTime());
     loadmarket(marketage);
     delay(1000);
     runonce=0;
@@ -86,12 +89,9 @@ void MainWindow::strat_download()
         int key=ui->servers->currentIndex()-1;
         QStringList keys=loadsettings("keys").toStringList();
         QString arg="Basic "+keys[key];
-
-
         QNetworkRequest request;
         manager->connectToHost(ui->servers->currentText().mid(0,ui->servers->currentText().indexOf(":")),ui->servers->currentText().mid(ui->servers->currentText().indexOf(":")+1,4).toInt());
         request.setRawHeader(QByteArray("Authorization"), arg.toUtf8());
-
         request.setHeader(QNetworkRequest::ContentTypeHeader,QString("application/json"));
         request.setUrl(url);
         if (runonce < 1) manager->get(request);
@@ -444,4 +444,17 @@ void MainWindow::relation ()
         relationDialog.setModal(true);
         relationDialog.exec();
     } else ui->messages->setText("Select record");
+}
+
+void MainWindow::on_coffeecup_clicked()
+{
+    QMessageBox msgBox;
+    QClipboard *clipboard=0;
+    msgBox.setWindowTitle("Coffee");
+    msgBox.setText("A coffee for creator \nBTC 1HJ5xJmePkfrYwixbZJaMUcXosiJhYRLbo\nETH/USDT 0x425c98102c43cd4d8e052Fd239B016dCb6CDa597\nAppreciated");
+    QAbstractButton* pButtonYes = msgBox.addButton("Copy to clipboard", QMessageBox::YesRole);
+    msgBox.exec();
+    if (msgBox.clickedButton()==pButtonYes) {
+        clipboard->setText("A coffee for creator \nBTC 1HJ5xJmePkfrYwixbZJaMUcXosiJhYRLbo\nETH/USDT 0x425c98102c43cd4d8e052Fd239B016dCb6CDa597\nAppreciated");
+    }
 }

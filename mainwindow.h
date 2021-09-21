@@ -51,6 +51,8 @@ private slots:
     void relation ();
     void delay(int msec);
 
+    void on_coffeecup_clicked();
+
 private:
     Ui::MainWindow *ui;
     QStandardItemModel *model;

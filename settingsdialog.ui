@@ -14,7 +14,7 @@
    <string>Settings</string>
   </property>
   <property name="windowIcon">
-   <iconset>
+   <iconset resource="resources.qrc">
     <normaloff>:/new/icon/s_black.png</normaloff>:/new/icon/s_black.png</iconset>
   </property>
   <layout class="QGridLayout" name="gridLayout">
@@ -29,38 +29,48 @@
     </widget>
    </item>
    <item row="1" column="0">
-    <layout class="QVBoxLayout" name="verticalLayout">
+    <layout class="QHBoxLayout" name="horizontalLayout_2">
      <item>
-      <layout class="QHBoxLayout" name="horizontalLayout_2">
-       <item>
-        <widget class="QLabel" name="label">
-         <property name="text">
-          <string>Server:port</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QLabel" name="label_2">
-         <property name="text">
-          <string>Api key</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </item>
-     <item>
-      <layout class="QHBoxLayout" name="horizontalLayout">
-       <item>
-        <widget class="QTextEdit" name="servers"/>
-       </item>
-       <item>
-        <widget class="QTextEdit" name="keys"/>
-       </item>
-      </layout>
+      <widget class="QLabel" name="label">
+       <property name="text">
+        <string>FreqUI server:port</string>
+       </property>
+      </widget>
      </item>
     </layout>
    </item>
    <item row="2" column="0">
+    <widget class="QTextEdit" name="servers"/>
+   </item>
+   <item row="3" column="0">
+    <layout class="QHBoxLayout" name="horizontalLayout">
+     <item>
+      <widget class="QLabel" name="label_2">
+       <property name="text">
+        <string>Api key</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="apikey"/>
+     </item>
+    </layout>
+   </item>
+   <item row="4" column="0">
+    <layout class="QHBoxLayout" name="horizontalLayout_4">
+     <item>
+      <widget class="QLabel" name="label_4">
+       <property name="text">
+        <string>Read markeds from</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QDateEdit" name="markedfrom"/>
+     </item>
+    </layout>
+   </item>
+   <item row="5" column="0">
     <layout class="QHBoxLayout" name="horizontalLayout_3">
      <item>
       <widget class="QLabel" name="label_3">
@@ -80,7 +90,9 @@
    </item>
   </layout>
  </widget>
- <resources/>
+ <resources>
+  <include location="resources.qrc"/>
+ </resources>
  <connections>
   <connection>
    <sender>buttonBox</sender>

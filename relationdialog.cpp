@@ -27,7 +27,7 @@ relationDialog::relationDialog(QWidget *parent) :
     model->setHeaderData(2, Qt::Horizontal, "Pair", Qt::DisplayRole);
     model->setHeaderData(3, Qt::Horizontal, "Sell reason", Qt::DisplayRole);
     model->setHeaderData(4, Qt::Horizontal, "Stake", Qt::DisplayRole);
-    model->setHeaderData(5, Qt::Horizontal, "%Proffit", Qt::DisplayRole);
+    model->setHeaderData(5, Qt::Horizontal, "Profit%", Qt::DisplayRole);
     model->setHeaderData(6, Qt::Horizontal, "Profit", Qt::DisplayRole);
     ui->tableView->setModel(model);
     ui->tableView->setSortingEnabled(true);
@@ -44,7 +44,7 @@ relationDialog::~relationDialog()
 void relationDialog::load_model()
 {
     int row=0,i=0,col, rows=0;
-    double cash_total=0, pr_total=0;
+    double cash_total=0, pr_total=0, avrstake=0;
     QModelIndex index;
     QDateTime tradedate;
     while (i < trademodel.length()-1) {
@@ -67,6 +67,7 @@ void relationDialog::load_model()
              if (col == 0) model->setData(index,tradedate);
              if (col == 1) model->setData(index,tradedate);
              if (col == 2 || col == 3 || col == 4) model->setData(index,trademodel[i+1]);
+             if (col == 4) avrstake+=trademodel[i+1].toDouble();
              ui->tableView->setItemDelegateForColumn(0,  new DateDelegate);
              ui->tableView->setItemDelegateForColumn(1,  new DateDelegate);
          }
@@ -75,6 +76,7 @@ void relationDialog::load_model()
          i++;
 
          }
+
        if (add) row++;
        add=false;
     }
@@ -82,7 +84,7 @@ void relationDialog::load_model()
     model->setData(index,"Total:");
     model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
     index=model->index(rows,5,QModelIndex());
-    model->setData(index,QString::number(pr_total));
+    model->setData(index,QLocale(QLocale::English).toString(pr_total,'F',2)+"% of "+QLocale(QLocale::English).toString(avrstake/row,'F',2));
     model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
     index=model->index(rows,6,QModelIndex());
     model->setData(index,QString::number(cash_total));

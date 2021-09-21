@@ -4,5 +4,6 @@
         <file>reload.png</file>
         <file>settings.png</file>
         <file>relation.png</file>
+        <file>coffeecup.png</file>
     </qresource>
 </RCC>
