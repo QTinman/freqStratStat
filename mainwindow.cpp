@@ -35,11 +35,11 @@ MainWindow::MainWindow(QWidget *parent)
     //connect(manager, SIGNAL(finished(QNetworkReply*)), this, SLOT(reload_model()));
     //connect(this, SIGNAL (processfinished(const QString &)), this, SLOT(reload_model()));
     connect(ui->relation, SIGNAL(clicked()), this, SLOT(relation()));
-
+    //am9objpwYXNz
     servers.append("Select server");
     servers.append(loadsettings("servers").toStringList());
-    QStringList keys=loadsettings("keys").toStringList();
-    if (keys.isEmpty()) savesettings("keys","API key here");
+    QString apikey=loadsettings("apikey").toString();
+    if (apikey.isEmpty()) ui->messages->setText("FreqUI API key missing, please enter one in settings.");
     int markedfrom=QDate::currentDate().dayOfYear()-loadsettings("markedfrom").toDate().dayOfYear();
     QDateTime marketage = QDateTime(QDate::currentDate().addDays(-markedfrom),QTime::currentTime());
     loadmarket(marketage);
@@ -67,7 +67,6 @@ MainWindow::MainWindow(QWidget *parent)
     ui->tableView->setSortingEnabled(true);
     ui->tableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     ui->tableView->sortByColumn(0,Qt::AscendingOrder);
-
 }
 
 
@@ -86,9 +85,8 @@ void MainWindow::strat_download()
         int limits=loadsettings("tradelimits").toInt();
         QUrl url = QUrl(QString("http://"+server+"/api/v1/trades?limit="+QString::number(limits)));
         this->setWindowTitle("Strategy Statistics - Active server "+server);
-        int key=ui->servers->currentIndex()-1;
-        QStringList keys=loadsettings("keys").toStringList();
-        QString arg="Basic "+keys[key];
+        QString apikey=loadsettings("apikey").toString();
+        QString arg="Basic "+apikey;
         QNetworkRequest request;
         manager->connectToHost(ui->servers->currentText().mid(0,ui->servers->currentText().indexOf(":")),ui->servers->currentText().mid(ui->servers->currentText().indexOf(":")+1,4).toInt());
         request.setRawHeader(QByteArray("Authorization"), arg.toUtf8());
@@ -174,9 +172,11 @@ void MainWindow::replyFinished (QNetworkReply *reply)
     {
         errors=0;
         reply->deleteLater();
-        ui->messages->clear();
         QByteArray rawtable=reply->readAll();
-        if (rawtable.mid(2,5) == "trade") strat2table(rawtable);
+        if (rawtable.mid(2,5) == "trade") {
+            strat2table(rawtable);
+            ui->messages->clear();
+        }
         else if (!rawtable.isEmpty()) market2table(rawtable);
     }
 }
