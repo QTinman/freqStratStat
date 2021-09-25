@@ -16,7 +16,7 @@ public:
     }
 };
 
-QString appgroup="stratreader",strat,timeframe;
+QString appgroup="stratreader",strat,timeframe,firsttrade;
 QDateTime marketdate;
 QStringList modeldatalist, servers, markets, trademodel;
 int colums=7,limit=500;
@@ -32,10 +32,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
     manager = new QNetworkAccessManager(this);
     connect(manager, SIGNAL(finished(QNetworkReply*)), this, SLOT(replyFinished(QNetworkReply*)));
-    //connect(manager, SIGNAL(finished(QNetworkReply*)), this, SLOT(reload_model()));
-    //connect(this, SIGNAL (processfinished(const QString &)), this, SLOT(reload_model()));
     connect(ui->relation, SIGNAL(clicked()), this, SLOT(relation()));
-    //am9objpwYXNz
     servers.append("Select server");
     servers.append(loadsettings("servers").toStringList());
     QString apikey=loadsettings("apikey").toString();
@@ -47,13 +44,11 @@ MainWindow::MainWindow(QWidget *parent)
     runonce=0;
     setGeometry(loadsettings("position").toRect());
     ui->servers->addItems(servers);
-    //ui->servers->setCurrentIndex(1);
     this->setWindowTitle("Strategy Statistics");
     connect(ui->servers, QOverload<int>::of(&QComboBox::currentIndexChanged),
             [=](int index){ combo_refresh(index); });
 
     QStringList modellist = initializemodel();
-    //ui->tableView->setItemDelegateForColumn(2,  new DateDelegate);
     model = new QStandardItemModel(modellist.length()/colums,colums,this);
     model->setRowCount(modellist.length()/colums);
     model->setHeaderData(0, Qt::Horizontal, "Strat", Qt::DisplayRole);
@@ -160,7 +155,6 @@ void MainWindow::replyFinished (QNetworkReply *reply)
     if(reply->error())
     {
         QByteArray rawtable=reply->readAll();
-       //qDebug() << "ERROR! " << reply->errorString();
         qDebug() << "Error: " << reply->error() <<
         ", Message: " << reply->errorString() <<
         ", Code: " << reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() <<
@@ -240,13 +234,13 @@ void MainWindow::strat2table(QByteArray rawtable)
         }
         if (strat!=data["strategy"].toString() || jsonArray.count() == rows) {
             tradestart=QDateTime(QDate(start_date.mid(0,4).toInt(),start_date.mid(5,2).toInt(),start_date.mid(8,2).toInt()),QTime(start_date.mid(11,2).toInt(),start_date.mid(14,2).toInt(),0));
+            if (tradestart.isNull()) qDebug() << tradestart;
             qint64 tradetime=QDateTime(QDate(close_date.mid(0,4).toInt(),close_date.mid(5,2).toInt(),close_date.mid(8,2).toInt()),QTime(close_date.mid(11,2).toInt(),close_date.mid(14,2).toInt(),0)).msecsTo(tradestart);
             tradestartnow = QDateTime::currentDateTime().addMSecs(tradetime);
             modeldatalist.append(strat);
             modeldatalist.append(QString::number(average));
             if (!markets.isEmpty()) marketthen = readmarket(close_date,start_date);
             if (!markets.isEmpty()) marketnow = readmarket(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"),tradestartnow.toString("yyyy-MM-dd hh:mm:ss"));
-            //modeldatalist.append(tradestart.toString("d MMM - hh:mm"));
             modeldatalist.append(tradestart.toString("yyyy-MM-dd hh:mm:ss"));
             modeldatalist.append(QLocale(QLocale::English).toString(avr_percent/average,'F',2));
             modeldatalist.append(QLocale(QLocale::English).toString(avr_profit/average,'F',2));
@@ -268,10 +262,7 @@ void MainWindow::strat2table(QByteArray rawtable)
                 << QLocale(QLocale::English).toString(data["stake_amount"].toDouble(),'F',trailingZeros)
                 << QLocale(QLocale::English).toString(data["profit_pct"].toDouble(),'F',2)
                 << QLocale(QLocale::English).toString(data["profit_abs"].toDouble(),'F',trailingZeros); //
-        //laststrat=strat;
     }
-
-        //qDebug() << modeldatalist[(addedrows-1)*7] << " " << addedrows;
     if (!modeldatalist.isEmpty())
     if (modeldatalist[(addedrows-1)*7] != strat) {
         tradestart=QDateTime(QDate(start_date.mid(0,4).toInt(),start_date.mid(5,2).toInt(),start_date.mid(8,2).toInt()),QTime(start_date.mid(11,2).toInt(),start_date.mid(14,2).toInt(),0));
@@ -281,7 +272,7 @@ void MainWindow::strat2table(QByteArray rawtable)
         modeldatalist.append(QString::number(average));
         if (!markets.isEmpty()) marketthen = readmarket(close_date,start_date);
         if (!markets.isEmpty()) marketnow = readmarket(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"),tradestartnow.toString("yyyy-MM-dd hh:mm:ss"));
-        modeldatalist.append(tradestart.toString("d MMM - hh:mm"));
+        modeldatalist.append(tradestart.toString("yyyy-MM-dd hh:mm:ss"));
         modeldatalist.append(QLocale(QLocale::English).toString(avr_percent/average,'F',2));
         modeldatalist.append(QLocale(QLocale::English).toString(avr_profit/average,'F',2));
         modeldatalist.append(QLocale(QLocale::English).toString(marketthen,'F',2));
@@ -299,8 +290,6 @@ void MainWindow::reload_model()
     QDateTime tradestart;
     QStringList modellist = initializemodel();
     model->setRowCount(modellist.length()/colums);
-    // "yyyy-MM-dd hh:mm:ss"
-    //qDebug() << modellist.length();
     while (i < modellist.length()-1) {
        for (col=0;col<colums;col++) {
          index=model->index(row,col,QModelIndex());
@@ -386,7 +375,7 @@ MainWindow::~MainWindow()
       "min_rate": 9.424,
       "max_rate": 9.663,
       "open_order_id": null
-    },
+    }
     */
 void MainWindow::combo_refresh(int comboindex)
 {
@@ -397,7 +386,6 @@ void MainWindow::combo_refresh(int comboindex)
 void MainWindow::on_settings_clicked()
 {
     settingsDialog settingsdialog;
-    //QObject::connect(&settingsdialog, SIGNAL(destroyed()), this, SLOT(reload_model()));
     settingsdialog.setModal(true); // if nomodal is needed then create pointer inputdialog *datesearch; in mainwindow.h private section, then here use inputdialog = new datesearch(this); datesearch.show();
     settingsdialog.exec();
 }
@@ -422,7 +410,6 @@ QString MainWindow::gettimeframe()
         timeframe = "1d";
         candlesprday=1;
     }
-
     return timeframe;
 }
 
@@ -440,6 +427,7 @@ void MainWindow::relation ()
         ui->messages->clear();
         QModelIndex index = indexes.at(0);
         strat = model->data(index.sibling(index.row(),0)).toString();
+        firsttrade = model->data(index.sibling(index.row(),2)).toString();
         relationDialog relationDialog;
         relationDialog.setModal(true);
         relationDialog.exec();

@@ -47,9 +47,10 @@ void relationDialog::load_model()
     double cash_total=0, pr_total=0, avrstake=0;
     QModelIndex index;
     QDateTime tradedate;
+    QDate trade=QDate(firsttrade.mid(0,4).toInt(),firsttrade.mid(5,2).toInt(),firsttrade.mid(8,2).toInt());
     while (i < trademodel.length()-1) {
         if (strat == trademodel[i]) rows++;
-        i++;
+         i++;
     }
     i=0;
     model->setRowCount(rows+1);
@@ -57,7 +58,12 @@ void relationDialog::load_model()
     while (i < trademodel.length()-1) {
        for (col=0;col<tablecolumns;col++) {
          index=model->index(row,col,QModelIndex());
-         if (col == 0) if (strat == trademodel[i]) add=true;
+         if (col == 0) {
+             QDate datetrade=QDate(trademodel[i+1].mid(0,4).toInt(),trademodel[i+1].mid(5,2).toInt(),trademodel[i+1].mid(8,2).toInt());
+             //qDebug() << ui->datefrom->date() << " " << datetrade << " " << ui->dateto->date();
+             if (strat == trademodel[i] && trade <= datetrade) add=true;
+             else if (strat == trademodel[i]) model->removeRow(1);
+         }
          if (col==2 && add) {
             pr_total+=trademodel[i+4].toDouble();
             cash_total+=trademodel[i+5].toDouble();
@@ -80,13 +86,13 @@ void relationDialog::load_model()
        if (add) row++;
        add=false;
     }
-    index=model->index(rows,2,QModelIndex());
+    index=model->index(row,2,QModelIndex());
     model->setData(index,"Total:");
     model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
-    index=model->index(rows,5,QModelIndex());
+    index=model->index(row,5,QModelIndex());
     model->setData(index,QLocale(QLocale::English).toString(pr_total,'F',2)+"% of "+QLocale(QLocale::English).toString(avrstake/row,'F',2));
     model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
-    index=model->index(rows,6,QModelIndex());
+    index=model->index(row,6,QModelIndex());
     model->setData(index,QString::number(cash_total));
     model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
 }
@@ -108,3 +114,4 @@ void relationDialog::savesettings(QString settings, QVariant attr)
     appsettings.setValue(settings,QVariant::fromValue(attr));
     appsettings.endGroup();
 }
+

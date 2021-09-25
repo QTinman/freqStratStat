@@ -21,6 +21,9 @@ public:
     void savesettings(QString settings, QVariant attr);
     ~relationDialog();
 
+private slots:
+
+
 private:
     Ui::relationDialog *ui;
     QStandardItemModel *model;

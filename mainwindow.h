@@ -11,7 +11,7 @@
 #include "settingsdialog.h"
 #include "relationdialog.h"
 
-extern QString appgroup, strat;
+extern QString appgroup, strat,firsttrade;
 extern QStringList trademodel;
 
 QT_BEGIN_NAMESPACE

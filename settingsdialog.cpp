@@ -49,6 +49,6 @@ void settingsDialog::on_buttonBox_accepted()
 
     appsettings.endGroup();
     savesettings("tradelimits",ui->tradelimits->value());
-    savesettings("apikey",ui->apikey->text()); //am9objpwYXNz
+    savesettings("apikey",ui->apikey->text());
     savesettings("markedfrom",ui->markedfrom->date());
 }
