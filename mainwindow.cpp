@@ -258,7 +258,7 @@ void MainWindow::strat2table(QByteArray rawtable)
         if (data["stake_amount"].toDouble()<0.1&&data["stake_amount"].toDouble()>0.001) trailingZeros=5;
         QString opendate =  QDateTime(QDate(data["open_date"].toString().mid(0,4).toInt(),data["open_date"].toString().mid(5,2).toInt(),data["open_date"].toString().mid(8,2).toInt()),QTime(data["open_date"].toString().mid(11,2).toInt(),data["open_date"].toString().mid(14,2).toInt(),0)).toString("d MMM - hh:mm");
         QString closedate =  QDateTime(QDate(data["close_date"].toString().mid(0,4).toInt(),data["close_date"].toString().mid(5,2).toInt(),data["close_date"].toString().mid(8,2).toInt()),QTime(data["close_date"].toString().mid(11,2).toInt(),data["close_date"].toString().mid(14,2).toInt(),0)).toString("d MMM - hh:mm");
-        trademodel  << data["strategy"].toString() << data["open_date"].toString() << data["close_date"].toString() << data["pair"].toString() << data["sell_reason"].toString()
+        trademodel  << data["strategy"].toString() << data["open_date"].toString() << data["close_date"].toString() << data["pair"].toString() << data["exit_reason"].toString()
                 << QLocale(QLocale::English).toString(data["stake_amount"].toDouble(),'F',trailingZeros)
                 << QLocale(QLocale::English).toString(data["profit_pct"].toDouble(),'F',2)
                 << QLocale(QLocale::English).toString(data["profit_abs"].toDouble(),'F',trailingZeros); //
