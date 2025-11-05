@@ -4,6 +4,12 @@
 #include "Delegates.h"
 #include "DateParser.h"
 #include "SettingsManager.h"
+#include <QPrinter>
+#include <QPainter>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QPageSize>
+#include <QPageLayout>
 
 int tablecolumns=9;
 relationDialog::relationDialog(QWidget *parent) :
@@ -99,4 +105,151 @@ void relationDialog::load_model()
     index=model->index(row,7,QModelIndex());
     model->setData(index,QString::number(cash_total));
     model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
+}
+
+void relationDialog::on_savePdfButton_clicked()
+{
+    // Open file dialog to choose save location
+    QString fileName = QFileDialog::getSaveFileName(this,
+        tr("Save Trades to PDF"),
+        QDir::homePath() + "/trades_" + strat + "_" + QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss") + ".pdf",
+        tr("PDF Files (*.pdf)"));
+
+    if (fileName.isEmpty()) {
+        return; // User cancelled
+    }
+
+    // Create printer object for PDF
+    QPrinter printer(QPrinter::HighResolution);
+    printer.setOutputFormat(QPrinter::PdfFormat);
+    printer.setOutputFileName(fileName);
+    printer.setPageSize(QPageSize(QPageSize::A4));
+    printer.setPageOrientation(QPageLayout::Landscape);
+
+    // Create painter
+    QPainter painter;
+    if (!painter.begin(&printer)) {
+        QMessageBox::warning(this, tr("Export Error"),
+                           tr("Failed to create PDF file."));
+        return;
+    }
+
+    // Set up fonts
+    QFont titleFont("Arial", 16, QFont::Bold);
+    QFont headerFont("Arial", 10, QFont::Bold);
+    QFont dataFont("Arial", 9);
+
+    // Calculate page dimensions
+    int pageWidth = printer.pageRect(QPrinter::DevicePixel).width();
+    int pageHeight = printer.pageRect(QPrinter::DevicePixel).height();
+    int margin = 50;
+    int yPos = margin;
+
+    // Draw title
+    painter.setFont(titleFont);
+    QString title = "Trade Details - Strategy: " + strat;
+    painter.drawText(margin, yPos, title);
+    yPos += 60;
+
+    // Draw date range
+    painter.setFont(dataFont);
+    painter.drawText(margin, yPos, "Generated: " + QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"));
+    yPos += 40;
+
+    // Get column count and row count
+    int colCount = model->columnCount();
+    int rowCount = model->rowCount();
+
+    // Calculate column widths (distribute available space)
+    int availableWidth = pageWidth - 2 * margin;
+    QVector<int> columnWidths;
+
+    // Define relative widths for each column
+    QVector<double> relativeWidths = {1.0, 1.0, 0.8, 0.8, 0.8, 0.7, 0.8, 0.8}; // Adjust based on content
+    double totalRelative = 0;
+    for (double w : relativeWidths) totalRelative += w;
+
+    for (int i = 0; i < colCount; i++) {
+        columnWidths.append(static_cast<int>(availableWidth * relativeWidths[i] / totalRelative));
+    }
+
+    // Draw table header
+    painter.setFont(headerFont);
+    int xPos = margin;
+    yPos += 10;
+
+    // Draw header background
+    painter.fillRect(margin, yPos - 5, availableWidth, 30, QColor(200, 200, 200));
+
+    for (int col = 0; col < colCount; col++) {
+        QString headerText = model->headerData(col, Qt::Horizontal).toString();
+        QRect headerRect(xPos, yPos, columnWidths[col], 25);
+        painter.drawText(headerRect, Qt::AlignCenter | Qt::TextWordWrap, headerText);
+        xPos += columnWidths[col];
+    }
+    yPos += 35;
+
+    // Draw table data
+    painter.setFont(dataFont);
+    int rowHeight = 25;
+
+    for (int row = 0; row < rowCount; row++) {
+        // Check if we need a new page
+        if (yPos + rowHeight > pageHeight - margin) {
+            printer.newPage();
+            yPos = margin;
+
+            // Redraw header on new page
+            painter.setFont(headerFont);
+            painter.fillRect(margin, yPos - 5, availableWidth, 30, QColor(200, 200, 200));
+            xPos = margin;
+            for (int col = 0; col < colCount; col++) {
+                QString headerText = model->headerData(col, Qt::Horizontal).toString();
+                QRect headerRect(xPos, yPos, columnWidths[col], 25);
+                painter.drawText(headerRect, Qt::AlignCenter | Qt::TextWordWrap, headerText);
+                xPos += columnWidths[col];
+            }
+            yPos += 35;
+            painter.setFont(dataFont);
+        }
+
+        // Draw row background (alternate colors)
+        if (row % 2 == 0) {
+            painter.fillRect(margin, yPos - 5, availableWidth, rowHeight, QColor(245, 245, 245));
+        }
+
+        // Check if this is the totals row (last row)
+        bool isTotalRow = (row == rowCount - 1);
+        if (isTotalRow) {
+            painter.setFont(headerFont);
+        }
+
+        xPos = margin;
+        for (int col = 0; col < colCount; col++) {
+            QModelIndex index = model->index(row, col);
+            QString cellText = model->data(index, Qt::DisplayRole).toString();
+
+            QRect cellRect(xPos, yPos, columnWidths[col] - 5, rowHeight);
+            painter.drawText(cellRect, Qt::AlignCenter | Qt::TextWordWrap, cellText);
+            xPos += columnWidths[col];
+        }
+
+        if (isTotalRow) {
+            painter.setFont(dataFont);
+        }
+
+        yPos += rowHeight;
+    }
+
+    // Draw footer
+    yPos = pageHeight - margin + 20;
+    painter.setFont(dataFont);
+    QString footer = "Generated by freqStratStat - Page 1";
+    painter.drawText(margin, yPos, footer);
+
+    painter.end();
+
+    // Show success message
+    QMessageBox::information(this, tr("Export Successful"),
+                           tr("Trades exported successfully to:\n%1").arg(fileName));
 }

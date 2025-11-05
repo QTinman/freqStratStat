@@ -20,7 +20,7 @@ public:
     ~relationDialog();
 
 private slots:
-
+    void on_savePdfButton_clicked();
 
 private:
     Ui::relationDialog *ui;

@@ -24,9 +24,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #    endif()
 #endif()
 
-find_package(QT NAMES Qt6 Qt5 COMPONENTS Widgets Network REQUIRED)
+find_package(QT NAMES Qt6 Qt5 COMPONENTS Widgets Network PrintSupport REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Network REQUIRED)
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS PrintSupport REQUIRED)
 
 set(PROJECT_SOURCES
         main.cpp
@@ -64,3 +65,4 @@ endif()
 
 target_link_libraries(freqStratStat PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
 target_link_libraries(freqStratStat PRIVATE Qt${QT_VERSION_MAJOR}::Network)
+target_link_libraries(freqStratStat PRIVATE Qt${QT_VERSION_MAJOR}::PrintSupport)
