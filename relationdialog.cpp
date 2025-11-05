@@ -11,7 +11,7 @@ public:
     }
 };
 
-int tablecolumns=8;
+int tablecolumns=9;
 relationDialog::relationDialog(QWidget *parent) :
     QDialog(parent),
     ui(new Ui::relationDialog)
@@ -25,14 +25,17 @@ relationDialog::relationDialog(QWidget *parent) :
     model->setHeaderData(0, Qt::Horizontal, "Date open", Qt::DisplayRole);
     model->setHeaderData(1, Qt::Horizontal, "Date closed", Qt::DisplayRole);
     model->setHeaderData(2, Qt::Horizontal, "Pair", Qt::DisplayRole);
-    model->setHeaderData(3, Qt::Horizontal, "Sell reason", Qt::DisplayRole);
-    model->setHeaderData(4, Qt::Horizontal, "Stake", Qt::DisplayRole);
-    model->setHeaderData(5, Qt::Horizontal, "Profit%", Qt::DisplayRole);
-    model->setHeaderData(6, Qt::Horizontal, "Profit", Qt::DisplayRole);
+    model->setHeaderData(3, Qt::Horizontal, "Enter tag", Qt::DisplayRole);
+    model->setHeaderData(4, Qt::Horizontal, "Exit reason", Qt::DisplayRole);
+    model->setHeaderData(5, Qt::Horizontal, "Stake", Qt::DisplayRole);
+    model->setHeaderData(6, Qt::Horizontal, "Profit%", Qt::DisplayRole);
+    model->setHeaderData(7, Qt::Horizontal, "Profit", Qt::DisplayRole);
     ui->tableView->setModel(model);
     ui->tableView->setSortingEnabled(true);
     ui->tableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     ui->tableView->sortByColumn(0,Qt::AscendingOrder);
+    ui->tableView->setItemDelegateForColumn(0, new DateDelegate(this));
+    ui->tableView->setItemDelegateForColumn(1, new DateDelegate(this));
 }
 
 relationDialog::~relationDialog()
@@ -64,20 +67,18 @@ void relationDialog::load_model()
              if (strat == trademodel[i] && trade <= datetrade) add=true;
              else if (strat == trademodel[i]) model->removeRow(1);
          }
-         if (col==2 && add) {
-            pr_total+=trademodel[i+4].toDouble();
-            cash_total+=trademodel[i+5].toDouble();
+         if (col==3 && add) {
+            pr_total+=trademodel[i+5].toDouble();
+            cash_total+=trademodel[i+6].toDouble();
          }
-         if (col <= 4 && add) {
+         if (col <= 5 && add) {
              tradedate=QDateTime(QDate(trademodel[i+1].mid(0,4).toInt(),trademodel[i+1].mid(5,2).toInt(),trademodel[i+1].mid(8,2).toInt()),QTime(trademodel[i+1].mid(11,2).toInt(),trademodel[i+1].mid(14,2).toInt(),0));
              if (col == 0) model->setData(index,tradedate);
              if (col == 1) model->setData(index,tradedate);
-             if (col == 2 || col == 3 || col == 4) model->setData(index,trademodel[i+1]);
-             if (col == 4) avrstake+=trademodel[i+1].toDouble();
-             ui->tableView->setItemDelegateForColumn(0,  new DateDelegate);
-             ui->tableView->setItemDelegateForColumn(1,  new DateDelegate);
+             if (col == 2 || col == 3 || col == 4 || col == 5) model->setData(index,trademodel[i+1]);
+             if (col == 5) avrstake+=trademodel[i+1].toDouble();
          }
-         if (col >= 5 && col < 7 && add) model->setData(index,trademodel[i+1].toDouble());
+         if (col >= 6 && col < 8 && add) model->setData(index,trademodel[i+1].toDouble());
          model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
          i++;
 
@@ -89,10 +90,10 @@ void relationDialog::load_model()
     index=model->index(row,2,QModelIndex());
     model->setData(index,"Total:");
     model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
-    index=model->index(row,5,QModelIndex());
+    index=model->index(row,6,QModelIndex());
     model->setData(index,QLocale(QLocale::English).toString(pr_total,'F',2)+"% of "+QLocale(QLocale::English).toString(avrstake/row,'F',2));
     model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
-    index=model->index(row,6,QModelIndex());
+    index=model->index(row,7,QModelIndex());
     model->setData(index,QString::number(cash_total));
     model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
 }
