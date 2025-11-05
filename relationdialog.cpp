@@ -54,7 +54,11 @@ void relationDialog::load_model()
     bool add=false;
     while (i < trademodel.length()-1) {
        for (col=0;col<tablecolumns;col++) {
-         index=model->index(row,col,QModelIndex());
+         // Only access model columns that exist (0 to tablecolumns-2, i.e., 0-7 for 9 fields)
+         if (col < tablecolumns - 1) {
+             index=model->index(row,col,QModelIndex());
+         }
+
          if (col == 0) {
              QDate datetrade = DateParser::parseFreqTradeDate(trademodel[i+1]).date();
              //qDebug() << ui->datefrom->date() << " " << datetrade << " " << ui->dateto->date();
@@ -62,8 +66,9 @@ void relationDialog::load_model()
              else if (strat == trademodel[i]) model->removeRow(1);
          }
          if (col==3 && add) {
-            pr_total+=trademodel[i+5].toDouble();
-            cash_total+=trademodel[i+6].toDouble();
+            // When col=3, i points to pair (index 3), so i+4=profit_pct(7), i+5=profit_abs(8)
+            pr_total+=trademodel[i+4].toDouble();
+            cash_total+=trademodel[i+5].toDouble();
          }
          if (col <= 5 && add) {
              tradedate = DateParser::parseFreqTradeDate(trademodel[i+1]);
@@ -73,7 +78,11 @@ void relationDialog::load_model()
              if (col == 5) avrstake+=trademodel[i+1].toDouble();
          }
          if (col >= 6 && col < 8 && add) model->setData(index,trademodel[i+1].toDouble());
-         model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
+
+         // Only set alignment if within model column bounds
+         if (col < tablecolumns - 1) {
+             model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
+         }
          i++;
 
          }
