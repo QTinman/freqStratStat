@@ -17,8 +17,6 @@ class relationDialog : public QDialog
 public:
     explicit relationDialog(QWidget *parent = nullptr);
     void load_model();
-    QVariant loadsettings(QString settings);
-    void savesettings(QString settings, QVariant attr);
     ~relationDialog();
 
 private slots:

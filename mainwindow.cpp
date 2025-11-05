@@ -3,54 +3,63 @@
 
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
-#include <QStyledItemDelegate>
+#include "Delegates.h"
+#include "DateParser.h"
+#include "SettingsManager.h"
 #include <QMessageBox>
 #include <QAbstractButton>
 #include <QPushButton>
+#include <QTimer>
 
-class DateDelegate: public QStyledItemDelegate{
-public:
-    using QStyledItemDelegate::QStyledItemDelegate;
-    QString displayText(const QVariant &value, const QLocale &locale) const{
-        return locale.toString(value.toDateTime(), "d MMM - hh:mm");
-    }
-};
-
-QString appgroup="stratreader",strat,timeframe,firsttrade;
-QDateTime marketdate;
-QStringList modeldatalist, servers, markets, trademodel;
-int colums=7,limit=500;
-int runonce=0,candles, candlesprday, errors;
-long marketstartday,marketdays=41;
+// Global data shared with relationDialog (consider refactoring in future)
+QString appgroup = "stratreader";
+QString strat;
+QString firsttrade;
+QStringList trademodel;
 
 
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
+    , m_columns(7)
+    , m_runOnce(0)
+    , m_candles(0)
+    , m_candlesPerDay(0)
+    , m_errors(0)
+    , m_marketStartDay(0)
+    , m_marketDays(41)
 {
     ui->setupUi(this);
     manager = new QNetworkAccessManager(this);
     connect(manager, SIGNAL(finished(QNetworkReply*)), this, SLOT(replyFinished(QNetworkReply*)));
     connect(ui->relation, SIGNAL(clicked()), this, SLOT(relation()));
-    servers.append("Select server");
-    servers.append(loadsettings("servers").toStringList());
-    QString apikey=loadsettings("apikey").toString();
-    if (apikey.isEmpty()) ui->messages->setText("FreqUI API key missing, please enter one in settings.");
-    int markedfrom=QDate::currentDate().dayOfYear()-loadsettings("markedfrom").toDate().dayOfYear();
-    QDateTime marketage = QDateTime(QDate::currentDate().addDays(-markedfrom),QTime::currentTime());
+
+    SettingsManager& settings = SettingsManager::instance();
+    m_servers.append("Select server");
+    m_servers.append(settings.loadSetting("servers").toStringList());
+
+    QString apikey = settings.loadSetting("apikey").toString();
+    if (apikey.isEmpty()) {
+        ui->messages->setText("FreqUI API key missing, please enter one in settings.");
+    }
+
+    int markedfrom = QDate::currentDate().dayOfYear() - settings.loadSetting("markedfrom").toDate().dayOfYear();
+    QDateTime marketage = QDateTime(QDate::currentDate().addDays(-markedfrom), QTime::currentTime());
     loadmarket(marketage);
-    delay(1000);
-    runonce=0;
-    setGeometry(loadsettings("position").toRect());
-    ui->servers->addItems(servers);
+
+    // Use QTimer instead of blocking delay
+    QTimer::singleShot(1000, this, SLOT(onInitializationTimerComplete()));
+
+    setGeometry(settings.loadSetting("position").toRect());
+    ui->servers->addItems(m_servers);
     this->setWindowTitle("Strategy Statistics");
     connect(ui->servers, QOverload<int>::of(&QComboBox::currentIndexChanged),
             [=](int index){ combo_refresh(index); });
 
     QStringList modellist = initializemodel();
-    model = new QStandardItemModel(modellist.length()/colums,colums,this);
-    model->setRowCount(modellist.length()/colums);
+    model = new QStandardItemModel(modellist.length() / m_columns, m_columns, this);
+    model->setRowCount(modellist.length() / m_columns);
     model->setHeaderData(0, Qt::Horizontal, "Strat", Qt::DisplayRole);
     model->setHeaderData(1, Qt::Horizontal, "Trades", Qt::DisplayRole);
     model->setHeaderData(2, Qt::Horizontal, "First trade", Qt::DisplayRole);
@@ -61,114 +70,101 @@ MainWindow::MainWindow(QWidget *parent)
     ui->tableView->setModel(model);
     ui->tableView->setSortingEnabled(true);
     ui->tableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    ui->tableView->sortByColumn(0,Qt::AscendingOrder);
+    ui->tableView->sortByColumn(0, Qt::AscendingOrder);
     ui->tableView->setItemDelegateForColumn(2, new DateDelegate(this));
 }
 
+
+void MainWindow::onInitializationTimerComplete()
+{
+    m_runOnce = 0;
+}
 
 QStringList MainWindow::initializemodel()
 {
     QStringList model;
     strat_download();
-    model=modeldatalist;
+    model = m_modelDataList;
     return model;
 }
 
 void MainWindow::strat_download()
 {
-    QString server=ui->servers->currentText();
+    QString server = ui->servers->currentText();
     if (server != "Select server") {
-        int limits=loadsettings("tradelimits").toInt();
-        QUrl url = QUrl(QString("http://"+server+"/api/v1/trades?limit="+QString::number(limits)));
-        this->setWindowTitle("Strategy Statistics - Active server "+server);
-        QString apikey=loadsettings("apikey").toString();
-        QString arg="Basic "+apikey;
+        SettingsManager& settings = SettingsManager::instance();
+        int limits = settings.loadSetting("tradelimits").toInt();
+        QUrl url = QUrl(QString("http://" + server + "/api/v1/trades?limit=" + QString::number(limits)));
+        this->setWindowTitle("Strategy Statistics - Active server " + server);
+        QString apikey = settings.loadSetting("apikey").toString();
+        QString arg = "Basic " + apikey;
         QNetworkRequest request;
-        manager->connectToHost(ui->servers->currentText().mid(0,ui->servers->currentText().indexOf(":")),ui->servers->currentText().mid(ui->servers->currentText().indexOf(":")+1,4).toInt());
+        manager->connectToHost(ui->servers->currentText().mid(0, ui->servers->currentText().indexOf(":")),
+                               ui->servers->currentText().mid(ui->servers->currentText().indexOf(":") + 1, 4).toInt());
         request.setRawHeader(QByteArray("Authorization"), arg.toUtf8());
-        request.setHeader(QNetworkRequest::ContentTypeHeader,QString("application/json"));
+        request.setHeader(QNetworkRequest::ContentTypeHeader, QString("application/json"));
         request.setUrl(url);
-        if (runonce < 1) manager->get(request);
+        if (m_runOnce < 1) manager->get(request);
     }
 }
 
 void MainWindow::market_download()
 {
     QDateTime cdt = QDateTime::currentDateTime();
-    long startdate=marketdate.msecsTo(cdt);
-    marketdays=startdate/86400000;
-    marketstartday=QDateTime::currentMSecsSinceEpoch()-(startdate);
-    timeframe = gettimeframe();
-    candles=marketdays*candlesprday;
-    QUrl url = QUrl(QString("https://www.binance.com/api/v3/klines?symbol=BTCUSDT&interval="+timeframe+"&limit="+QString::number(candles))+"&startTime="+QString::number(marketstartday));
+    long startdate = m_marketDate.msecsTo(cdt);
+    m_marketDays = startdate / 86400000;
+    m_marketStartDay = QDateTime::currentMSecsSinceEpoch() - startdate;
+    m_timeframe = gettimeframe();
+    m_candles = m_marketDays * m_candlesPerDay;
+    QUrl url = QUrl(QString("https://www.binance.com/api/v3/klines?symbol=BTCUSDT&interval=" + m_timeframe +
+                           "&limit=" + QString::number(m_candles)) + "&startTime=" + QString::number(m_marketStartDay));
     QNetworkRequest request(url);
-    if (runonce < 1) manager->get(request);
-}
-
-QVariant MainWindow::loadsettings(QString settings)
-{
-    QVariant returnvar;
-    QSettings appsettings("QTinman",appgroup);
-    appsettings.beginGroup(appgroup);
-    returnvar = appsettings.value(settings);
-    appsettings.endGroup();
-    return returnvar;
-}
-
-void MainWindow::savesettings(QString settings, QVariant attr)
-{
-    QSettings appsettings("QTinman",appgroup);
-    appsettings.beginGroup(appgroup);
-    appsettings.setValue(settings,QVariant::fromValue(attr));
-    appsettings.endGroup();
+    if (m_runOnce < 1) manager->get(request);
 }
 
 void MainWindow::loadmarket(QDateTime date)
 {
-    marketdate=date;
+    m_marketDate = date;
     market_download();
 }
 
 double MainWindow::readmarket(QString last_date, QString open_date)
 { // "2021-06-30 14:39:06"   "2021-06-23 16:26:06"
     QDateTime cdt = QDateTime::currentDateTime();
-    double firstprice=0,lastprice=0;
-    double change=0;
-    int counter=0, candle=timeframe.mid(0,1).toInt()*3600000;
-    long startdate = QDateTime(QDate(open_date.mid(0,4).toInt(),open_date.mid(5,2).toInt(),open_date.mid(8,2).toInt()),QTime(open_date.mid(11,2).toInt(),open_date.mid(14,2).toInt(),0)).msecsTo(cdt);
-    long enddate = QDateTime(QDate(last_date.mid(0,4).toInt(),last_date.mid(5,2).toInt(),last_date.mid(8,2).toInt()),QTime(last_date.mid(11,2).toInt(),last_date.mid(14,2).toInt(),0)).msecsTo(cdt);
-    startdate=QDateTime::currentMSecsSinceEpoch()-startdate;
-    enddate=QDateTime::currentMSecsSinceEpoch()-enddate;
-    for (int r=0;r<markets.count();r+=5 ) {
-      if (startdate < markets[r].toDouble()+candle && enddate > markets[r].toDouble()-candle) {
-         if (counter==0) firstprice = markets[r+1].toDouble();
-         lastprice = markets[r+4].toDouble();
-         counter++;
-      }
-   }
+    int candle = m_timeframe.mid(0, 1).toInt() * 3600000;
 
-   change=(lastprice/firstprice*100)-100;
-   return change;
+    // Use DateParser to parse dates
+    QDateTime openDateTime = DateParser::parseFreqTradeDate(open_date);
+    QDateTime lastDateTime = DateParser::parseFreqTradeDate(last_date);
+
+    long startdate = openDateTime.msecsTo(cdt);
+    long enddate = lastDateTime.msecsTo(cdt);
+    startdate = QDateTime::currentMSecsSinceEpoch() - startdate;
+    enddate = QDateTime::currentMSecsSinceEpoch() - enddate;
+
+    // Use OHLCDataContainer's calculatePriceChange method
+    double change = m_marketData.calculatePriceChange(startdate, enddate, candle);
+    return change;
 }
 
 void MainWindow::replyFinished (QNetworkReply *reply)
 {
     if(reply->error())
     {
-        QByteArray rawtable=reply->readAll();
+        QByteArray rawtable = reply->readAll();
         qDebug() << "Error: " << reply->error() <<
         ", Message: " << reply->errorString() <<
         ", Code: " << reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() <<
         ", Description: " << rawtable;
         ui->messages->setText("Error: " + reply->errorString());
-        errors++;
+        m_errors++;
     }
     else
     {
-        errors=0;
+        m_errors = 0;
         reply->deleteLater();
-        QByteArray rawtable=reply->readAll();
-        if (rawtable.mid(2,5) == "trade") {
+        QByteArray rawtable = reply->readAll();
+        if (rawtable.mid(2, 5) == "trade") {
             strat2table(rawtable);
             ui->messages->clear();
         }
@@ -180,39 +176,40 @@ void MainWindow::market2table(QByteArray rawtable)
 {
     QJsonParseError parserError;
     QJsonDocument cryptolist = QJsonDocument::fromJson(rawtable, &parserError);
-    double low,high,open,close;
-    for (int i=0;i<candles;i++)
+
+    // Clear existing market data
+    m_marketData.clear();
+
+    for (int i = 0; i < m_candles; i++)
     {
-        double epocdate = cryptolist[i][0].toDouble(); // 0=date
-        QString Qopen = cryptolist[i][1].toString(); // 1=open
-        QString Qhigh = cryptolist[i][2].toString(); // 2=high
-        QString Qlow = cryptolist[i][3].toString(); // 3=low
-        QString Qclose = cryptolist[i][4].toString(); // 4=close 5=volume
-        low = Qlow.toDouble();
-        high = Qhigh.toDouble();
-        open = Qopen.toDouble();
-        close = Qclose.toDouble();
+        qint64 epocdate = static_cast<qint64>(cryptolist[i][0].toDouble()); // 0=date
+        double open = cryptolist[i][1].toString().toDouble();   // 1=open
+        double high = cryptolist[i][2].toString().toDouble();   // 2=high
+        double low = cryptolist[i][3].toString().toDouble();    // 3=low
+        double close = cryptolist[i][4].toString().toDouble();  // 4=close 5=volume
+
         if (epocdate > 0) {
-        markets << QString::number(epocdate) << QString::number(open) << QString::number(high) << QString::number(low) << QString::number(close);
+            m_marketData.addCandle(epocdate, open, high, low, close);
         }
     }
+
     QDate cd = QDate::currentDate();
-    int today=(QDateTime::currentDateTime().currentMSecsSinceEpoch()+marketstartday)/86400000;
-    cd = cd.addDays(-(candles/marketdays)-today);
-    runonce++;
+    int today = (QDateTime::currentDateTime().currentMSecsSinceEpoch() + m_marketStartDay) / 86400000;
+    cd = cd.addDays(-(m_candles / m_marketDays) - today);
+    m_runOnce++;
 }
 
 void MainWindow::strat2table(QByteArray rawtable)
 {
     QJsonArray jsonArray;
-    QString close_date="",start_date="";
-    double avr_profit=0,avr_percent=0,marketthen=0,marketnow=0;
+    QString close_date = "", start_date = "";
+    double avr_profit = 0, avr_percent = 0, marketthen = 0, marketnow = 0;
     QDateTime tradestart, tradestartnow;
     QJsonParseError parserError;
-    int average=0,rows=0,addedrows=0;
-    modeldatalist.clear();
+    int average = 0, rows = 0, addedrows = 0;
+    m_modelDataList.clear();
     trademodel.clear();
-    strat="";
+    strat = "";
     QJsonDocument cryptolist = QJsonDocument::fromJson(rawtable, &parserError);
     QJsonObject jsonObject = cryptolist.object();
     jsonArray = jsonObject["trades"].toArray();
@@ -234,19 +231,20 @@ void MainWindow::strat2table(QByteArray rawtable)
 
         }
         if (strat!=data["strategy"].toString() || jsonArray.count() == rows) {
-            tradestart=QDateTime(QDate(start_date.mid(0,4).toInt(),start_date.mid(5,2).toInt(),start_date.mid(8,2).toInt()),QTime(start_date.mid(11,2).toInt(),start_date.mid(14,2).toInt(),0));
+            tradestart = DateParser::parseFreqTradeDate(start_date);
             if (tradestart.isNull()) qDebug() << tradestart;
-            qint64 tradetime=QDateTime(QDate(close_date.mid(0,4).toInt(),close_date.mid(5,2).toInt(),close_date.mid(8,2).toInt()),QTime(close_date.mid(11,2).toInt(),close_date.mid(14,2).toInt(),0)).msecsTo(tradestart);
+            QDateTime closeDateTime = DateParser::parseFreqTradeDate(close_date);
+            qint64 tradetime = closeDateTime.msecsTo(tradestart);
             tradestartnow = QDateTime::currentDateTime().addMSecs(tradetime);
-            modeldatalist.append(strat);
-            modeldatalist.append(QString::number(average));
-            if (!markets.isEmpty()) marketthen = readmarket(close_date,start_date);
-            if (!markets.isEmpty()) marketnow = readmarket(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"),tradestartnow.toString("yyyy-MM-dd hh:mm:ss"));
-            modeldatalist.append(tradestart.toString("yyyy-MM-dd hh:mm:ss"));
-            modeldatalist.append(QLocale(QLocale::English).toString(avr_percent/average,'F',2));
-            modeldatalist.append(QLocale(QLocale::English).toString(avr_profit/average,'F',2));
-            modeldatalist.append(QLocale(QLocale::English).toString(marketthen,'F',2));
-            modeldatalist.append(QLocale(QLocale::English).toString(marketnow,'F',2));
+            m_modelDataList.append(strat);
+            m_modelDataList.append(QString::number(average));
+            if (!m_marketData.isEmpty()) marketthen = readmarket(close_date, start_date);
+            if (!m_marketData.isEmpty()) marketnow = readmarket(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"), tradestartnow.toString("yyyy-MM-dd hh:mm:ss"));
+            m_modelDataList.append(tradestart.toString("yyyy-MM-dd hh:mm:ss"));
+            m_modelDataList.append(QLocale(QLocale::English).toString(avr_percent / average, 'F', 2));
+            m_modelDataList.append(QLocale(QLocale::English).toString(avr_profit / average, 'F', 2));
+            m_modelDataList.append(QLocale(QLocale::English).toString(marketthen, 'F', 2));
+            m_modelDataList.append(QLocale(QLocale::English).toString(marketnow, 'F', 2));
             strat=data["strategy"].toString();
             avr_percent=data["close_profit_pct"].toDouble();
             avr_profit=data["profit_abs"].toDouble();
@@ -254,55 +252,56 @@ void MainWindow::strat2table(QByteArray rawtable)
             addedrows++;
             average=1;
         }
-        int trailingZeros=2;
-        if (data["stake_amount"].toDouble()<0.001) trailingZeros=7;
-        if (data["stake_amount"].toDouble()<0.1&&data["stake_amount"].toDouble()>0.001) trailingZeros=5;
-        QString opendate =  QDateTime(QDate(data["open_date"].toString().mid(0,4).toInt(),data["open_date"].toString().mid(5,2).toInt(),data["open_date"].toString().mid(8,2).toInt()),QTime(data["open_date"].toString().mid(11,2).toInt(),data["open_date"].toString().mid(14,2).toInt(),0)).toString("d MMM - hh:mm");
-        QString closedate =  QDateTime(QDate(data["close_date"].toString().mid(0,4).toInt(),data["close_date"].toString().mid(5,2).toInt(),data["close_date"].toString().mid(8,2).toInt()),QTime(data["close_date"].toString().mid(11,2).toInt(),data["close_date"].toString().mid(14,2).toInt(),0)).toString("d MMM - hh:mm");
+        int trailingZeros = 2;
+        if (data["stake_amount"].toDouble() < 0.001) trailingZeros = 7;
+        if (data["stake_amount"].toDouble() < 0.1 && data["stake_amount"].toDouble() > 0.001) trailingZeros = 5;
+
+        // Note: opendate and closedate variables removed - they were unused
         trademodel  << data["strategy"].toString() << data["open_date"].toString() << data["close_date"].toString() << data["pair"].toString()
                 << data["enter_tag"].toString() << data["exit_reason"].toString()
-                << QLocale(QLocale::English).toString(data["stake_amount"].toDouble(),'F',trailingZeros)
-                << QLocale(QLocale::English).toString(data["profit_pct"].toDouble(),'F',2)
-                << QLocale(QLocale::English).toString(data["profit_abs"].toDouble(),'F',trailingZeros); //
+                << QLocale(QLocale::English).toString(data["stake_amount"].toDouble(), 'F', trailingZeros)
+                << QLocale(QLocale::English).toString(data["profit_pct"].toDouble(), 'F', 2)
+                << QLocale(QLocale::English).toString(data["profit_abs"].toDouble(), 'F', trailingZeros); //
     }
-    if (!modeldatalist.isEmpty())
-    if (modeldatalist[(addedrows-1)*7] != strat) {
-        tradestart=QDateTime(QDate(start_date.mid(0,4).toInt(),start_date.mid(5,2).toInt(),start_date.mid(8,2).toInt()),QTime(start_date.mid(11,2).toInt(),start_date.mid(14,2).toInt(),0));
-        qint64 tradetime=QDateTime(QDate(close_date.mid(0,4).toInt(),close_date.mid(5,2).toInt(),close_date.mid(8,2).toInt()),QTime(close_date.mid(11,2).toInt(),close_date.mid(14,2).toInt(),0)).msecsTo(tradestart);
+    if (!m_modelDataList.isEmpty())
+    if (m_modelDataList[(addedrows - 1) * 7] != strat) {
+        tradestart = DateParser::parseFreqTradeDate(start_date);
+        QDateTime closeDateTime = DateParser::parseFreqTradeDate(close_date);
+        qint64 tradetime = closeDateTime.msecsTo(tradestart);
         tradestartnow = QDateTime::currentDateTime().addMSecs(tradetime);
-        modeldatalist.append(strat);
-        modeldatalist.append(QString::number(average));
-        if (!markets.isEmpty()) marketthen = readmarket(close_date,start_date);
-        if (!markets.isEmpty()) marketnow = readmarket(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"),tradestartnow.toString("yyyy-MM-dd hh:mm:ss"));
-        modeldatalist.append(tradestart.toString("yyyy-MM-dd hh:mm:ss"));
-        modeldatalist.append(QLocale(QLocale::English).toString(avr_percent/average,'F',2));
-        modeldatalist.append(QLocale(QLocale::English).toString(avr_profit/average,'F',2));
-        modeldatalist.append(QLocale(QLocale::English).toString(marketthen,'F',2));
-        modeldatalist.append(QLocale(QLocale::English).toString(marketnow,'F',2));
+        m_modelDataList.append(strat);
+        m_modelDataList.append(QString::number(average));
+        if (!m_marketData.isEmpty()) marketthen = readmarket(close_date, start_date);
+        if (!m_marketData.isEmpty()) marketnow = readmarket(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"), tradestartnow.toString("yyyy-MM-dd hh:mm:ss"));
+        m_modelDataList.append(tradestart.toString("yyyy-MM-dd hh:mm:ss"));
+        m_modelDataList.append(QLocale(QLocale::English).toString(avr_percent / average, 'F', 2));
+        m_modelDataList.append(QLocale(QLocale::English).toString(avr_profit / average, 'F', 2));
+        m_modelDataList.append(QLocale(QLocale::English).toString(marketthen, 'F', 2));
+        m_modelDataList.append(QLocale(QLocale::English).toString(marketnow, 'F', 2));
     }
-    runonce++;
+    m_runOnce++;
     reload_model();
 }
 
 
 void MainWindow::reload_model()
 {
-    int row=0,i=0,col;
+    int row = 0, i = 0, col;
     QModelIndex index;
     QDateTime tradestart;
     QStringList modellist = initializemodel();
-    model->setRowCount(modellist.length()/colums);
-    while (i < modellist.length()-1) {
-       for (col=0;col<colums;col++) {
-         index=model->index(row,col,QModelIndex());
-         if (col <= 1) model->setData(index,modellist[i]);
-         if (col == 2){
-            tradestart=QDateTime(QDate(modellist[i].mid(0,4).toInt(),modellist[i].mid(5,2).toInt(),modellist[i].mid(8,2).toInt()),QTime(modellist[i].mid(11,2).toInt(),modellist[i].mid(14,2).toInt(),0));
-            model->setData(index,tradestart);
+    model->setRowCount(modellist.length() / m_columns);
+    while (i < modellist.length() - 1) {
+       for (col = 0; col < m_columns; col++) {
+         index = model->index(row, col, QModelIndex());
+         if (col <= 1) model->setData(index, modellist[i]);
+         if (col == 2) {
+            tradestart = DateParser::parseFreqTradeDate(modellist[i]);
+            model->setData(index, tradestart);
          }
-         if (col >= 3) model->setData(index,modellist[i]);
-         if (col >= 5) model->setData(index,modellist[i].toDouble());
-         if (col >= 6) model->setData(index,modellist[i]);
+         if (col >= 3) model->setData(index, modellist[i]);
+         if (col >= 5) model->setData(index, modellist[i].toDouble());
+         if (col >= 6) model->setData(index, modellist[i]);
          model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
          i++;
         }
@@ -322,7 +321,7 @@ QJsonArray MainWindow::ReadJson(const QByteArray &bytes)
 
 MainWindow::~MainWindow()
 {
-    savesettings("position",this->geometry());
+    SettingsManager::instance().saveSetting("position", this->geometry());
     delete ui;
 }
 
@@ -380,7 +379,7 @@ MainWindow::~MainWindow()
     */
 void MainWindow::combo_refresh(int comboindex)
 {
-    runonce=0;
+    m_runOnce = 0;
     reload_model();
 }
 
@@ -393,32 +392,24 @@ void MainWindow::on_settings_clicked()
 
 QString MainWindow::gettimeframe()
 {
-
-    QDateTime edt=QDateTime::currentDateTime();
-    if (marketdays <= 41) {
-        timeframe = "1h";
-        candlesprday=24;
-    } else if (marketdays >= 42 && marketdays <= 82) {
-        timeframe = "2h";
-        candlesprday=12;
-    } else if (marketdays >= 83 && marketdays <= 164) {
-        timeframe = "4h";
-        candlesprday=6;
-    } else if (marketdays >= 165 && marketdays <= 329) {
-        timeframe = "8h";
-        candlesprday=3;
+    QDateTime edt = QDateTime::currentDateTime();
+    if (m_marketDays <= 41) {
+        m_timeframe = "1h";
+        m_candlesPerDay = 24;
+    } else if (m_marketDays >= 42 && m_marketDays <= 82) {
+        m_timeframe = "2h";
+        m_candlesPerDay = 12;
+    } else if (m_marketDays >= 83 && m_marketDays <= 164) {
+        m_timeframe = "4h";
+        m_candlesPerDay = 6;
+    } else if (m_marketDays >= 165 && m_marketDays <= 329) {
+        m_timeframe = "8h";
+        m_candlesPerDay = 3;
     } else {
-        timeframe = "1d";
-        candlesprday=1;
+        m_timeframe = "1d";
+        m_candlesPerDay = 1;
     }
-    return timeframe;
-}
-
-void MainWindow::delay(int msec)
-{
-    QTime dieTime= QTime::currentTime().addMSecs(msec);
-    while (QTime::currentTime() < dieTime)
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+    return m_timeframe;
 }
 
 void MainWindow::relation ()

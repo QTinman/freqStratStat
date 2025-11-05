@@ -40,6 +40,10 @@ set(PROJECT_SOURCES
         relationdialog.cpp
         relationdialog.h
         relationdialog.ui
+        SettingsManager.h
+        DateParser.h
+        OHLCData.h
+        Delegates.h
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)

@@ -15,8 +15,6 @@ class settingsDialog : public QDialog
 
 public:
     explicit settingsDialog(QWidget *parent = nullptr);
-    QVariant loadsettings(QString settings);
-    void savesettings(QString settings, QVariant attr);
     ~settingsDialog();
 
 private slots:

@@ -1,15 +1,9 @@
 #include "relationdialog.h"
 #include "ui_relationdialog.h"
 #include "mainwindow.h"
-#include <QStyledItemDelegate>
-
-class DateDelegate: public QStyledItemDelegate{
-public:
-    using QStyledItemDelegate::QStyledItemDelegate;
-    QString displayText(const QVariant &value, const QLocale &locale) const{
-        return locale.toString(value.toDateTime(), "d MMM - hh:mm");
-    }
-};
+#include "Delegates.h"
+#include "DateParser.h"
+#include "SettingsManager.h"
 
 int tablecolumns=9;
 relationDialog::relationDialog(QWidget *parent) :
@@ -20,7 +14,7 @@ relationDialog::relationDialog(QWidget *parent) :
     ui->label->setText("Strategy:"+strat);
     model = new QStandardItemModel(trademodel.length()/(tablecolumns-1),tablecolumns-1,this);
     //model->setRowCount(trademodel.length()/tablecolumns);
-    setGeometry(loadsettings("relationdialog").toRect());
+    setGeometry(SettingsManager::instance().loadSetting("relationdialog").toRect());
     load_model();
     model->setHeaderData(0, Qt::Horizontal, "Date open", Qt::DisplayRole);
     model->setHeaderData(1, Qt::Horizontal, "Date closed", Qt::DisplayRole);
@@ -40,7 +34,7 @@ relationDialog::relationDialog(QWidget *parent) :
 
 relationDialog::~relationDialog()
 {
-    savesettings("relationdialog",this->geometry());
+    SettingsManager::instance().saveSetting("relationdialog", this->geometry());
     delete ui;
 }
 
@@ -50,7 +44,7 @@ void relationDialog::load_model()
     double cash_total=0, pr_total=0, avrstake=0;
     QModelIndex index;
     QDateTime tradedate;
-    QDate trade=QDate(firsttrade.mid(0,4).toInt(),firsttrade.mid(5,2).toInt(),firsttrade.mid(8,2).toInt());
+    QDate trade = DateParser::parseFreqTradeDate(firsttrade).date();
     while (i < trademodel.length()-1) {
         if (strat == trademodel[i]) rows++;
          i++;
@@ -62,7 +56,7 @@ void relationDialog::load_model()
        for (col=0;col<tablecolumns;col++) {
          index=model->index(row,col,QModelIndex());
          if (col == 0) {
-             QDate datetrade=QDate(trademodel[i+1].mid(0,4).toInt(),trademodel[i+1].mid(5,2).toInt(),trademodel[i+1].mid(8,2).toInt());
+             QDate datetrade = DateParser::parseFreqTradeDate(trademodel[i+1]).date();
              //qDebug() << ui->datefrom->date() << " " << datetrade << " " << ui->dateto->date();
              if (strat == trademodel[i] && trade <= datetrade) add=true;
              else if (strat == trademodel[i]) model->removeRow(1);
@@ -72,7 +66,7 @@ void relationDialog::load_model()
             cash_total+=trademodel[i+6].toDouble();
          }
          if (col <= 5 && add) {
-             tradedate=QDateTime(QDate(trademodel[i+1].mid(0,4).toInt(),trademodel[i+1].mid(5,2).toInt(),trademodel[i+1].mid(8,2).toInt()),QTime(trademodel[i+1].mid(11,2).toInt(),trademodel[i+1].mid(14,2).toInt(),0));
+             tradedate = DateParser::parseFreqTradeDate(trademodel[i+1]);
              if (col == 0) model->setData(index,tradedate);
              if (col == 1) model->setData(index,tradedate);
              if (col == 2 || col == 3 || col == 4 || col == 5) model->setData(index,trademodel[i+1]);
@@ -97,22 +91,3 @@ void relationDialog::load_model()
     model->setData(index,QString::number(cash_total));
     model->setData(index, Qt::AlignCenter, Qt::TextAlignmentRole);
 }
-
-QVariant relationDialog::loadsettings(QString settings)
-{
-    QVariant returnvar;
-    QSettings appsettings("QTinman",appgroup);
-    appsettings.beginGroup(appgroup);
-    returnvar = appsettings.value(settings);
-    appsettings.endGroup();
-    return returnvar;
-}
-
-void relationDialog::savesettings(QString settings, QVariant attr)
-{
-    QSettings appsettings("QTinman",appgroup);
-    appsettings.beginGroup(appgroup);
-    appsettings.setValue(settings,QVariant::fromValue(attr));
-    appsettings.endGroup();
-}
-

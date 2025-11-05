@@ -10,8 +10,10 @@
 #include <QUrl>
 #include "settingsdialog.h"
 #include "relationdialog.h"
+#include "OHLCData.h"
 
-extern QString appgroup, strat,firsttrade;
+// Global data shared with relationDialog (will be refactored in future)
+extern QString appgroup, strat, firsttrade;
 extern QStringList trademodel;
 
 QT_BEGIN_NAMESPACE
@@ -35,8 +37,6 @@ public:
     void add_data(QString column1,QString column2);
     void loadmarket(QDateTime date);
     QString gettimeframe();
-    QVariant loadsettings(QString settings);
-    void savesettings(QString settings, QVariant attr);
     double readmarket(QString open_date, QString last_date);
     void market2table(QByteArray rawtable);
     void strat2table(QByteArray rawtable);
@@ -48,14 +48,28 @@ public slots:
 private slots:
     void reload_model();
     void on_settings_clicked();
-    void relation ();
-    void delay(int msec);
-
+    void relation();
     void on_coffeecup_clicked();
+    void onInitializationTimerComplete();
 
 private:
     Ui::MainWindow *ui;
     QStandardItemModel *model;
     QNetworkAccessManager *manager;
+
+    // Data members (previously global variables)
+    QString m_timeframe;
+    QDateTime m_marketDate;
+    QStringList m_modelDataList;
+    QStringList m_servers;
+    OHLCDataContainer m_marketData;  // Replaces flat QStringList markets
+
+    int m_columns;
+    int m_runOnce;
+    int m_candles;
+    int m_candlesPerDay;
+    int m_errors;
+    long m_marketStartDay;
+    long m_marketDays;
 };
 #endif // MAINWINDOW_H
