@@ -5,11 +5,15 @@
 #include "DateParser.h"
 #include "SettingsManager.h"
 #include <QPrinter>
-#include <QPainter>
 #include <QFileDialog>
 #include <QMessageBox>
-#include <QPageSize>
-#include <QPageLayout>
+#include <QTextDocument>
+#include <QTextCursor>
+#include <QTextTable>
+#include <QTextTableFormat>
+#include <QTextCharFormat>
+#include <QTextBlockFormat>
+#include <QAbstractTextDocumentLayout>
 
 int tablecolumns=9;
 relationDialog::relationDialog(QWidget *parent) :
@@ -125,129 +129,105 @@ void relationDialog::on_savePdfButton_clicked()
     printer.setOutputFileName(fileName);
     printer.setPageSize(QPageSize(QPageSize::A4));
     printer.setPageOrientation(QPageLayout::Landscape);
+    printer.setPageMargins(QMarginsF(15, 15, 15, 15), QPageLayout::Millimeter);
 
-    // Create painter
-    QPainter painter;
-    if (!painter.begin(&printer)) {
-        QMessageBox::warning(this, tr("Export Error"),
-                           tr("Failed to create PDF file."));
-        return;
-    }
+    // Create QTextDocument for better font handling
+    QTextDocument document;
+    QTextCursor cursor(&document);
 
-    // Set up fonts
-    QFont titleFont("Arial", 16, QFont::Bold);
-    QFont headerFont("Arial", 10, QFont::Bold);
-    QFont dataFont("Arial", 9);
+    // Set up character formats
+    QTextCharFormat titleFormat;
+    titleFormat.setFontPointSize(18);
+    titleFormat.setFontWeight(QFont::Bold);
 
-    // Calculate page dimensions
-    int pageWidth = printer.pageRect(QPrinter::DevicePixel).width();
-    int pageHeight = printer.pageRect(QPrinter::DevicePixel).height();
-    int margin = 50;
-    int yPos = margin;
+    QTextCharFormat normalFormat;
+    normalFormat.setFontPointSize(10);
 
-    // Draw title
-    painter.setFont(titleFont);
-    QString title = "Trade Details - Strategy: " + strat;
-    painter.drawText(margin, yPos, title);
-    yPos += 60;
+    QTextCharFormat headerFormat;
+    headerFormat.setFontPointSize(10);
+    headerFormat.setFontWeight(QFont::Bold);
+    headerFormat.setBackground(QBrush(QColor(220, 220, 220)));
 
-    // Draw date range
-    painter.setFont(dataFont);
-    painter.drawText(margin, yPos, "Generated: " + QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"));
-    yPos += 40;
+    QTextCharFormat totalFormat;
+    totalFormat.setFontPointSize(10);
+    totalFormat.setFontWeight(QFont::Bold);
 
-    // Get column count and row count
+    // Add title
+    QTextBlockFormat centerFormat;
+    centerFormat.setAlignment(Qt::AlignCenter);
+    cursor.setBlockFormat(centerFormat);
+    cursor.insertText("Trade Details - Strategy: " + strat, titleFormat);
+    cursor.insertBlock();
+
+    // Add generation timestamp
+    QTextBlockFormat leftFormat;
+    leftFormat.setAlignment(Qt::AlignLeft);
+    cursor.setBlockFormat(leftFormat);
+    cursor.insertText("Generated: " + QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"), normalFormat);
+    cursor.insertBlock();
+    cursor.insertBlock(); // Empty line
+
+    // Create table
     int colCount = model->columnCount();
     int rowCount = model->rowCount();
 
-    // Calculate column widths (distribute available space)
-    int availableWidth = pageWidth - 2 * margin;
-    QVector<int> columnWidths;
+    QTextTableFormat tableFormat;
+    tableFormat.setCellPadding(4);
+    tableFormat.setCellSpacing(0);
+    tableFormat.setBorder(1);
+    tableFormat.setBorderStyle(QTextFrameFormat::BorderStyle_Solid);
+    tableFormat.setWidth(QTextLength(QTextLength::PercentageLength, 100));
+    tableFormat.setAlignment(Qt::AlignCenter);
 
-    // Define relative widths for each column
-    QVector<double> relativeWidths = {1.0, 1.0, 0.8, 0.8, 0.8, 0.7, 0.8, 0.8}; // Adjust based on content
-    double totalRelative = 0;
-    for (double w : relativeWidths) totalRelative += w;
+    // Set column width constraints (as percentages)
+    QVector<QTextLength> columnWidths;
+    columnWidths << QTextLength(QTextLength::PercentageLength, 14)  // Date open
+                 << QTextLength(QTextLength::PercentageLength, 14)  // Date closed
+                 << QTextLength(QTextLength::PercentageLength, 11)  // Pair
+                 << QTextLength(QTextLength::PercentageLength, 11)  // Enter tag
+                 << QTextLength(QTextLength::PercentageLength, 13)  // Exit reason
+                 << QTextLength(QTextLength::PercentageLength, 11)  // Stake
+                 << QTextLength(QTextLength::PercentageLength, 13)  // Profit%
+                 << QTextLength(QTextLength::PercentageLength, 13); // Profit
+    tableFormat.setColumnWidthConstraints(columnWidths);
 
-    for (int i = 0; i < colCount; i++) {
-        columnWidths.append(static_cast<int>(availableWidth * relativeWidths[i] / totalRelative));
-    }
+    QTextTable *table = cursor.insertTable(rowCount + 1, colCount, tableFormat); // +1 for header
 
-    // Draw table header
-    painter.setFont(headerFont);
-    int xPos = margin;
-    yPos += 10;
-
-    // Draw header background
-    painter.fillRect(margin, yPos - 5, availableWidth, 30, QColor(200, 200, 200));
-
+    // Insert headers
     for (int col = 0; col < colCount; col++) {
+        QTextTableCell cell = table->cellAt(0, col);
+        QTextCursor cellCursor = cell.firstCursorPosition();
+        cellCursor.setBlockFormat(centerFormat);
         QString headerText = model->headerData(col, Qt::Horizontal).toString();
-        QRect headerRect(xPos, yPos, columnWidths[col], 25);
-        painter.drawText(headerRect, Qt::AlignCenter | Qt::TextWordWrap, headerText);
-        xPos += columnWidths[col];
+        cellCursor.insertText(headerText, headerFormat);
     }
-    yPos += 35;
 
-    // Draw table data
-    painter.setFont(dataFont);
-    int rowHeight = 25;
-
+    // Insert data rows
     for (int row = 0; row < rowCount; row++) {
-        // Check if we need a new page
-        if (yPos + rowHeight > pageHeight - margin) {
-            printer.newPage();
-            yPos = margin;
-
-            // Redraw header on new page
-            painter.setFont(headerFont);
-            painter.fillRect(margin, yPos - 5, availableWidth, 30, QColor(200, 200, 200));
-            xPos = margin;
-            for (int col = 0; col < colCount; col++) {
-                QString headerText = model->headerData(col, Qt::Horizontal).toString();
-                QRect headerRect(xPos, yPos, columnWidths[col], 25);
-                painter.drawText(headerRect, Qt::AlignCenter | Qt::TextWordWrap, headerText);
-                xPos += columnWidths[col];
-            }
-            yPos += 35;
-            painter.setFont(dataFont);
-        }
-
-        // Draw row background (alternate colors)
-        if (row % 2 == 0) {
-            painter.fillRect(margin, yPos - 5, availableWidth, rowHeight, QColor(245, 245, 245));
-        }
-
-        // Check if this is the totals row (last row)
         bool isTotalRow = (row == rowCount - 1);
-        if (isTotalRow) {
-            painter.setFont(headerFont);
-        }
+        QTextCharFormat cellFormat = isTotalRow ? totalFormat : normalFormat;
 
-        xPos = margin;
         for (int col = 0; col < colCount; col++) {
+            QTextTableCell cell = table->cellAt(row + 1, col); // +1 because of header row
+            QTextCursor cellCursor = cell.firstCursorPosition();
+            cellCursor.setBlockFormat(centerFormat);
+
             QModelIndex index = model->index(row, col);
             QString cellText = model->data(index, Qt::DisplayRole).toString();
 
-            QRect cellRect(xPos, yPos, columnWidths[col] - 5, rowHeight);
-            painter.drawText(cellRect, Qt::AlignCenter | Qt::TextWordWrap, cellText);
-            xPos += columnWidths[col];
-        }
+            cellCursor.insertText(cellText, cellFormat);
 
-        if (isTotalRow) {
-            painter.setFont(dataFont);
+            // Add subtle background for alternating rows (except header and total)
+            if (!isTotalRow && row % 2 == 0) {
+                QTextTableCellFormat cellBgFormat;
+                cellBgFormat.setBackground(QBrush(QColor(248, 248, 248)));
+                cell.setFormat(cellBgFormat);
+            }
         }
-
-        yPos += rowHeight;
     }
 
-    // Draw footer
-    yPos = pageHeight - margin + 20;
-    painter.setFont(dataFont);
-    QString footer = "Generated by freqStratStat - Page 1";
-    painter.drawText(margin, yPos, footer);
-
-    painter.end();
+    // Print the document to PDF
+    document.print(&printer);
 
     // Show success message
     QMessageBox::information(this, tr("Export Successful"),
