@@ -7,5 +7,5 @@ The program reads your freqUI api and dislplays all strategies in a table from t
 
 
 // Enable "enable_openapi": true, in apiserver config.json
-// Go to http://127.0.0.1:8080/docs/ you will find the get api key there after login and executing a command there.
+// Go to http://127.0.0.1:8080/docs/ or your address:port you will find the get api key there after login and executing a command there.
 
