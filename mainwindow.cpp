@@ -605,8 +605,17 @@ void MainWindow::fetchVolumeData(const QString& pair, const QString& timeframe, 
 
     m_pendingVolumePairs.insert(requestKey);
 
-    // URL encode the pair (replace / with %2F, : with %3A)
-    QString encodedPair = QString(pair).replace("/", "%2F").replace(":", "%3A");
+    // Strip stake currency suffix from pair (e.g., "BTC/USDT:USDT" -> "BTC/USDT")
+    // FreqTrade's /pair_candles endpoint expects BASE/QUOTE format, not BASE/QUOTE:STAKE
+    QString apiPair = pair;
+    int colonPos = apiPair.indexOf(':');
+    if (colonPos > 0) {
+        apiPair = apiPair.left(colonPos);
+        logDebug(QString("Stripped stake currency: %1 -> %2").arg(pair).arg(apiPair));
+    }
+
+    // URL encode the pair (replace / with %2F)
+    QString encodedPair = QString(apiPair).replace("/", "%2F");
 
     QUrl url = QUrl(QString("http://" + m_currentServer + "/api/v1/pair_candles" +
                            "?pair=" + encodedPair +
