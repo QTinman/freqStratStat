@@ -570,16 +570,21 @@ void MainWindow::fetchVolumeData(const QString& pair, const QString& timeframe, 
     request.setAttribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 1), pair);
     request.setAttribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 2), timeframe);
 
+    qDebug() << "Fetching volume data from:" << url.toString();
     manager->get(request);
 }
 
 // Process volume data received from API
 void MainWindow::volumeData2table(QByteArray rawdata, const QString& pair, const QString& timeframe) {
+    qDebug() << "volumeData2table called for pair:" << pair << "timeframe:" << timeframe;
+    qDebug() << "Raw data size:" << rawdata.size() << "bytes";
+
     QJsonParseError parserError;
     QJsonDocument doc = QJsonDocument::fromJson(rawdata, &parserError);
 
     if (parserError.error != QJsonParseError::NoError) {
         qDebug() << "Volume JSON parse error for" << pair << ":" << parserError.errorString();
+        qDebug() << "Raw data:" << rawdata.left(500); // Show first 500 chars
         return;
     }
 
@@ -588,8 +593,11 @@ void MainWindow::volumeData2table(QByteArray rawdata, const QString& pair, const
 
     if (dataArray.isEmpty()) {
         qDebug() << "No volume data returned for pair:" << pair;
+        qDebug() << "JSON keys:" << jsonObject.keys();
         return;
     }
+
+    qDebug() << "Received" << dataArray.size() << "candles for" << pair;
 
     VolumeDataContainer volumeData;
 
@@ -638,10 +646,20 @@ QString formatVolume(double volume) {
 void MainWindow::processParsedTrades() {
     qDebug() << "processParsedTrades: Processing" << m_parsedTrades.size() << "trades";
     qint64 timeframeMs = timeframeToMs(currentTimeframe);
+    qDebug() << "currentTimeframe:" << currentTimeframe << "-> timeframeMs:" << timeframeMs;
 
+    int tradesProcessed = 0;
     for (const ParsedTrade& trade : m_parsedTrades) {
         // Get volume data from cache
         VolumeDataContainer volumeData = VolumeDataCache::instance().getData(trade.pair, currentTimeframe);
+
+        if (tradesProcessed < 3) { // Debug first 3 trades only
+            qDebug() << "Trade" << tradesProcessed << "- Pair:" << trade.pair
+                     << "Open timestamp:" << trade.open_timestamp
+                     << "Close timestamp:" << trade.close_timestamp;
+            qDebug() << "  Volume data cached:" << !volumeData.isEmpty()
+                     << "Candle count:" << volumeData.count();
+        }
 
         double entryVolume = 0.0;
         double exitVolume = 0.0;
@@ -655,6 +673,10 @@ void MainWindow::processParsedTrades() {
             // Get volumes at entry and exit timestamps
             entryVolume = volumeData.getVolumeAtTimestamp(trade.open_timestamp, timeframeMs);
             exitVolume = volumeData.getVolumeAtTimestamp(trade.close_timestamp, timeframeMs);
+
+            if (tradesProcessed < 3) {
+                qDebug() << "  Entry volume:" << entryVolume << "Exit volume:" << exitVolume;
+            }
 
             // Calculate volume ratio (entry volume compared to average)
             volumeRatio = volumeData.getVolumeRatio(trade.open_timestamp, timeframeMs);
@@ -689,6 +711,8 @@ void MainWindow::processParsedTrades() {
                    << entryVolumeStr
                    << exitVolumeStr
                    << volumeRatioStr;
+
+        tradesProcessed++;
     }
 
     // Clear parsed trades as they've been processed
