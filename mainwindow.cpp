@@ -15,6 +15,7 @@
 QString appgroup = "stratreader";
 QString strat;
 QString firsttrade;
+QString currentTimeframe = "5m";  // Default timeframe for volume data
 QStringList trademodel;
 
 
@@ -29,6 +30,8 @@ MainWindow::MainWindow(QWidget *parent)
     , m_errors(0)
     , m_marketStartDay(0)
     , m_marketDays(41)
+    , m_volumeFetchesCompleted(0)
+    , m_totalVolumeFetches(0)
 {
     ui->setupUi(this);
     manager = new QNetworkAccessManager(this);
@@ -92,6 +95,7 @@ void MainWindow::strat_download()
 {
     QString server = ui->servers->currentText();
     if (server != "Select server") {
+        m_currentServer = server;  // Store for volume fetching
         SettingsManager& settings = SettingsManager::instance();
         int limits = settings.loadSetting("tradelimits").toInt();
         QUrl url = QUrl(QString("http://" + server + "/api/v1/trades?limit=" + QString::number(limits)));
@@ -156,7 +160,18 @@ void MainWindow::replyFinished (QNetworkReply *reply)
         ", Message: " << reply->errorString() <<
         ", Code: " << reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() <<
         ", Description: " << rawtable;
-        ui->messages->setText("Error: " + reply->errorString());
+
+        // Check if this was a volume request that failed
+        QString requestType = reply->request().attribute(QNetworkRequest::User).toString();
+        if (requestType == "volume") {
+            QString pair = reply->request().attribute(QNetworkRequest::User + 1).toString();
+            QString timeframe = reply->request().attribute(QNetworkRequest::User + 2).toString();
+            QString requestKey = pair + "_" + timeframe;
+            m_pendingVolumePairs.remove(requestKey);
+            qDebug() << "Volume data fetch failed for" << pair;
+        } else {
+            ui->messages->setText("Error: " + reply->errorString());
+        }
         m_errors++;
     }
     else
@@ -164,7 +179,15 @@ void MainWindow::replyFinished (QNetworkReply *reply)
         m_errors = 0;
         reply->deleteLater();
         QByteArray rawtable = reply->readAll();
-        if (rawtable.mid(2, 5) == "trade") {
+
+        // Check if this is a volume data response
+        QString requestType = reply->request().attribute(QNetworkRequest::User).toString();
+        if (requestType == "volume") {
+            QString pair = reply->request().attribute(QNetworkRequest::User + 1).toString();
+            QString timeframe = reply->request().attribute(QNetworkRequest::User + 2).toString();
+            volumeData2table(rawtable, pair, timeframe);
+        }
+        else if (rawtable.mid(2, 5) == "trade") {
             strat2table(rawtable);
             ui->messages->clear();
         }
@@ -437,4 +460,105 @@ void MainWindow::on_coffeecup_clicked()
     if (msgBox.clickedButton()==pButtonYes) {
         clipboard->setText("A coffee for creator \nBTC 1HJ5xJmePkfrYwixbZJaMUcXosiJhYRLbo\nETH/USDT 0x425c98102c43cd4d8e052Fd239B016dCb6CDa597\nAppreciated");
     }
+}
+
+// Convert timeframe string to milliseconds
+qint64 MainWindow::timeframeToMs(const QString& timeframe) {
+    QString tf = timeframe.toLower();
+    if (tf.endsWith("m")) {
+        return tf.left(tf.length() - 1).toLongLong() * 60 * 1000;
+    } else if (tf.endsWith("h")) {
+        return tf.left(tf.length() - 1).toLongLong() * 60 * 60 * 1000;
+    } else if (tf.endsWith("d")) {
+        return tf.left(tf.length() - 1).toLongLong() * 24 * 60 * 60 * 1000;
+    }
+    return 300000; // Default 5 minutes
+}
+
+// Fetch volume data for a specific pair from FreqTrade API
+void MainWindow::fetchVolumeData(const QString& pair, const QString& timeframe, int limit) {
+    if (m_currentServer.isEmpty()) {
+        return;
+    }
+
+    // Check cache first
+    if (VolumeDataCache::instance().hasData(pair, timeframe)) {
+        return; // Already have fresh data
+    }
+
+    // Avoid duplicate requests
+    QString requestKey = pair + "_" + timeframe;
+    if (m_pendingVolumePairs.contains(requestKey)) {
+        return;
+    }
+
+    m_pendingVolumePairs.insert(requestKey);
+
+    // URL encode the pair (replace / with %2F, : with %3A)
+    QString encodedPair = QString(pair).replace("/", "%2F").replace(":", "%3A");
+
+    QUrl url = QUrl(QString("http://" + m_currentServer + "/api/v1/pair_candles" +
+                           "?pair=" + encodedPair +
+                           "&timeframe=" + timeframe +
+                           "&limit=" + QString::number(limit)));
+
+    SettingsManager& settings = SettingsManager::instance();
+    QString apikey = settings.loadSetting("apikey").toString();
+    QString arg = "Basic " + apikey;
+
+    QNetworkRequest request;
+    request.setRawHeader(QByteArray("Authorization"), arg.toUtf8());
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QString("application/json"));
+    request.setUrl(url);
+
+    // Set custom property to identify this as a volume request
+    request.setAttribute(QNetworkRequest::User, "volume");
+    request.setAttribute(QNetworkRequest::User + 1, pair);
+    request.setAttribute(QNetworkRequest::User + 2, timeframe);
+
+    manager->get(request);
+}
+
+// Process volume data received from API
+void MainWindow::volumeData2table(QByteArray rawdata, const QString& pair, const QString& timeframe) {
+    QJsonParseError parserError;
+    QJsonDocument doc = QJsonDocument::fromJson(rawdata, &parserError);
+
+    if (parserError.error != QJsonParseError::NoError) {
+        qDebug() << "Volume JSON parse error for" << pair << ":" << parserError.errorString();
+        return;
+    }
+
+    QJsonObject jsonObject = doc.object();
+    QJsonArray dataArray = jsonObject["data"].toArray();
+
+    if (dataArray.isEmpty()) {
+        qDebug() << "No volume data returned for pair:" << pair;
+        return;
+    }
+
+    VolumeDataContainer volumeData;
+
+    for (const QJsonValue& value : dataArray) {
+        QJsonArray candle = value.toArray();
+        if (candle.size() >= 6) {
+            qint64 timestamp = static_cast<qint64>(candle[0].toDouble());
+            double open = candle[1].toVariant().toDouble();
+            double high = candle[2].toVariant().toDouble();
+            double low = candle[3].toVariant().toDouble();
+            double close = candle[4].toVariant().toDouble();
+            double volume = candle[5].toVariant().toDouble();
+
+            volumeData.addCandle(timestamp, open, high, low, close, volume);
+        }
+    }
+
+    // Store in cache
+    VolumeDataCache::instance().addData(pair, timeframe, volumeData);
+
+    // Remove from pending
+    QString requestKey = pair + "_" + timeframe;
+    m_pendingVolumePairs.remove(requestKey);
+
+    qDebug() << "Volume data cached for" << pair << ":" << volumeData.count() << "candles";
 }

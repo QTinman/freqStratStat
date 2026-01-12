@@ -11,9 +11,10 @@
 #include "settingsdialog.h"
 #include "relationdialog.h"
 #include "OHLCData.h"
+#include "VolumeData.h"
 
 // Global data shared with relationDialog (will be refactored in future)
-extern QString appgroup, strat, firsttrade;
+extern QString appgroup, strat, firsttrade, currentTimeframe;
 extern QStringList trademodel;
 
 QT_BEGIN_NAMESPACE
@@ -40,6 +41,9 @@ public:
     double readmarket(QString open_date, QString last_date);
     void market2table(QByteArray rawtable);
     void strat2table(QByteArray rawtable);
+    void fetchVolumeData(const QString& pair, const QString& timeframe, int limit = 500);
+    void volumeData2table(QByteArray rawdata, const QString& pair, const QString& timeframe);
+    qint64 timeframeToMs(const QString& timeframe);
 
 public slots:
     void replyFinished (QNetworkReply *reply);
@@ -71,5 +75,11 @@ private:
     int m_errors;
     long m_marketStartDay;
     long m_marketDays;
+
+    // Volume data members
+    QSet<QString> m_pendingVolumePairs;  // Track which pairs we're fetching
+    QString m_currentServer;
+    int m_volumeFetchesCompleted;
+    int m_totalVolumeFetches;
 };
 #endif // MAINWINDOW_H

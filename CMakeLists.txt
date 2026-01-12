@@ -45,6 +45,7 @@ set(PROJECT_SOURCES
         DateParser.h
         OHLCData.h
         Delegates.h
+        VolumeData.h
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
