@@ -163,6 +163,7 @@ void MainWindow::replyFinished (QNetworkReply *reply)
 
         // Check if this was a volume request that failed
         QString requestType = reply->request().attribute(QNetworkRequest::User).toString();
+        qDebug() << "Error - Request type:" << requestType << "(empty:" << requestType.isEmpty() << ")";
         if (requestType == "volume") {
             QString pair = reply->request().attribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 1)).toString();
             QString timeframe = reply->request().attribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 2)).toString();
@@ -189,6 +190,8 @@ void MainWindow::replyFinished (QNetworkReply *reply)
 
         // Check if this is a volume data response
         QString requestType = reply->request().attribute(QNetworkRequest::User).toString();
+        qDebug() << "Success - Request type:" << requestType << "(empty:" << requestType.isEmpty() << ")"
+                 << "URL:" << reply->url().toString();
         if (requestType == "volume") {
             QString pair = reply->request().attribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 1)).toString();
             QString timeframe = reply->request().attribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 2)).toString();
@@ -571,6 +574,8 @@ void MainWindow::fetchVolumeData(const QString& pair, const QString& timeframe, 
     request.setAttribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 2), timeframe);
 
     qDebug() << "Fetching volume data from:" << url.toString();
+    qDebug() << "Request attributes set - User:" << request.attribute(QNetworkRequest::User).toString()
+             << "Pair:" << request.attribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 1)).toString();
     manager->get(request);
 }
 
