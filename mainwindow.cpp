@@ -388,15 +388,24 @@ void MainWindow::strat2table(QByteArray rawtable)
         m_totalVolumeFetches = 0; // Count actual fetches, not total pairs
 
         for (const QString& pair : uniquePairs) {
+            // Strip stake currency for all internal cache operations
+            // Futures pairs like "GUN/USDT:USDT" need to become "GUN/USDT" for consistency
+            QString cachePair = pair;
+            int colonPos = cachePair.indexOf(':');
+            if (colonPos > 0) {
+                cachePair = cachePair.left(colonPos);
+            }
+
             // Check if we need to fetch (not cached, not already pending)
-            QString requestKey = pair + "_" + currentTimeframe;
-            bool needsFetch = !VolumeDataCache::instance().hasData(pair, currentTimeframe) &&
+            QString requestKey = cachePair + "_" + currentTimeframe;
+            bool needsFetch = !VolumeDataCache::instance().hasData(cachePair, currentTimeframe) &&
                               !m_pendingVolumePairs.contains(requestKey);
 
             if (needsFetch) {
                 m_totalVolumeFetches++;
             }
 
+            // Pass the original pair; fetchVolumeData will handle stripping
             fetchVolumeData(pair, currentTimeframe);
         }
 
@@ -592,27 +601,27 @@ void MainWindow::fetchVolumeData(const QString& pair, const QString& timeframe, 
         return;
     }
 
-    // Check cache first
-    if (VolumeDataCache::instance().hasData(pair, timeframe)) {
-        return; // Already have fresh data
-    }
-
-    // Avoid duplicate requests
-    QString requestKey = pair + "_" + timeframe;
-    if (m_pendingVolumePairs.contains(requestKey)) {
-        return;
-    }
-
-    m_pendingVolumePairs.insert(requestKey);
-
-    // Strip stake currency suffix from pair (e.g., "BTC/USDT:USDT" -> "BTC/USDT")
-    // FreqTrade's /pair_candles endpoint expects BASE/QUOTE format, not BASE/QUOTE:STAKE
+    // Strip stake currency suffix early for consistent internal operations
+    // FreqTrade's /pair_candles endpoint expects BASE/QUOTE format (e.g., "BTC/USDT" not "BTC/USDT:USDT")
     QString apiPair = pair;
     int colonPos = apiPair.indexOf(':');
     if (colonPos > 0) {
         apiPair = apiPair.left(colonPos);
         logDebug(QString("Stripped stake currency: %1 -> %2").arg(pair).arg(apiPair));
     }
+
+    // Check cache using stripped pair
+    if (VolumeDataCache::instance().hasData(apiPair, timeframe)) {
+        return; // Already have fresh data
+    }
+
+    // Avoid duplicate requests using stripped pair
+    QString requestKey = apiPair + "_" + timeframe;
+    if (m_pendingVolumePairs.contains(requestKey)) {
+        return;
+    }
+
+    m_pendingVolumePairs.insert(requestKey);
 
     // URL encode the pair (replace / with %2F)
     QString encodedPair = QString(apiPair).replace("/", "%2F");
