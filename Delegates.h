@@ -16,7 +16,7 @@ public:
     using QStyledItemDelegate::QStyledItemDelegate;
 
     QString displayText(const QVariant &value, const QLocale &locale) const override {
-        if (value.type() == QVariant::DateTime) {
+        if (value.canConvert<QDateTime>() && value.toDateTime().isValid()) {
             return locale.toString(value.toDateTime(), "d MMM - hh:mm");
         }
         return QStyledItemDelegate::displayText(value, locale);

@@ -164,8 +164,8 @@ void MainWindow::replyFinished (QNetworkReply *reply)
         // Check if this was a volume request that failed
         QString requestType = reply->request().attribute(QNetworkRequest::User).toString();
         if (requestType == "volume") {
-            QString pair = reply->request().attribute(QNetworkRequest::User + 1).toString();
-            QString timeframe = reply->request().attribute(QNetworkRequest::User + 2).toString();
+            QString pair = reply->request().attribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 1)).toString();
+            QString timeframe = reply->request().attribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 2)).toString();
             QString requestKey = pair + "_" + timeframe;
             m_pendingVolumePairs.remove(requestKey);
             qDebug() << "Volume data fetch failed for" << pair;
@@ -183,8 +183,8 @@ void MainWindow::replyFinished (QNetworkReply *reply)
         // Check if this is a volume data response
         QString requestType = reply->request().attribute(QNetworkRequest::User).toString();
         if (requestType == "volume") {
-            QString pair = reply->request().attribute(QNetworkRequest::User + 1).toString();
-            QString timeframe = reply->request().attribute(QNetworkRequest::User + 2).toString();
+            QString pair = reply->request().attribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 1)).toString();
+            QString timeframe = reply->request().attribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 2)).toString();
             volumeData2table(rawtable, pair, timeframe);
         }
         else if (rawtable.mid(2, 5) == "trade") {
@@ -538,8 +538,8 @@ void MainWindow::fetchVolumeData(const QString& pair, const QString& timeframe, 
 
     // Set custom property to identify this as a volume request
     request.setAttribute(QNetworkRequest::User, "volume");
-    request.setAttribute(QNetworkRequest::User + 1, pair);
-    request.setAttribute(QNetworkRequest::User + 2, timeframe);
+    request.setAttribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 1), pair);
+    request.setAttribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 2), timeframe);
 
     manager->get(request);
 }
