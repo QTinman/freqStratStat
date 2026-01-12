@@ -11,6 +11,24 @@
 #include <QPushButton>
 #include <QTimer>
 #include <QUrlQuery>
+#include <QFile>
+#include <QTextStream>
+#include <QStandardPaths>
+
+// Debug logging helper
+void logDebug(const QString& message) {
+    // Write to qDebug
+    qDebug().noquote() << message;
+
+    // Also write to a file
+    QString logPath = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/freqStratStat_debug.log";
+    QFile logFile(logPath);
+    if (logFile.open(QIODevice::Append | QIODevice::Text)) {
+        QTextStream out(&logFile);
+        out << QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss.zzz") << " - " << message << "\n";
+        logFile.close();
+    }
+}
 
 // Global data shared with relationDialog (consider refactoring in future)
 QString appgroup = "stratreader";
@@ -35,6 +53,12 @@ MainWindow::MainWindow(QWidget *parent)
     , m_totalVolumeFetches(0)
 {
     ui->setupUi(this);
+
+    // Log startup
+    QString logPath = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/freqStratStat_debug.log";
+    logDebug("=== freqStratStat started ===");
+    logDebug("Log file: " + logPath);
+
     manager = new QNetworkAccessManager(this);
     connect(manager, SIGNAL(finished(QNetworkReply*)), this, SLOT(replyFinished(QNetworkReply*)));
     connect(ui->relation, SIGNAL(clicked()), this, SLOT(relation()));
@@ -45,7 +69,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     QString apikey = settings.loadSetting("apikey").toString();
     if (apikey.isEmpty()) {
-        ui->messages->setText("FreqUI API key missing, please enter one in settings.");
+        ui->messages->setText("FreqUI API key missing, please enter one in settings. Debug log: " + logPath);
+    } else {
+        ui->messages->setText("Debug log: " + logPath);
     }
 
     int markedfrom = QDate::currentDate().dayOfYear() - settings.loadSetting("markedfrom").toDate().dayOfYear();
@@ -95,12 +121,16 @@ QStringList MainWindow::initializemodel()
 void MainWindow::strat_download()
 {
     QString server = ui->servers->currentText();
+    logDebug(QString("=== strat_download called, server: %1, m_runOnce: %2").arg(server).arg(m_runOnce));
+
     if (server != "Select server") {
         m_currentServer = server;  // Store for volume fetching
         SettingsManager& settings = SettingsManager::instance();
         int limits = settings.loadSetting("tradelimits").toInt();
         QUrl url = QUrl(QString("http://" + server + "/api/v1/trades?limit=" + QString::number(limits)));
         this->setWindowTitle("Strategy Statistics - Active server " + server);
+        ui->messages->setText("Fetching strategies from " + server + "...");
+
         QString apikey = settings.loadSetting("apikey").toString();
         QString arg = "Basic " + apikey;
         QNetworkRequest request;
@@ -109,7 +139,16 @@ void MainWindow::strat_download()
         request.setRawHeader(QByteArray("Authorization"), arg.toUtf8());
         request.setHeader(QNetworkRequest::ContentTypeHeader, QString("application/json"));
         request.setUrl(url);
-        if (m_runOnce < 1) manager->get(request);
+
+        logDebug("Requesting trades from: " + url.toString());
+        if (m_runOnce < 1) {
+            logDebug("Making GET request (m_runOnce < 1)");
+            manager->get(request);
+        } else {
+            logDebug(QString("Skipping GET request (m_runOnce = %1)").arg(m_runOnce));
+        }
+    } else {
+        logDebug("Server is 'Select server', skipping download");
     }
 }
 
@@ -164,7 +203,8 @@ void MainWindow::replyFinished (QNetworkReply *reply)
 
         // Check if this was a volume request that failed
         QString url = reply->url().toString();
-        qDebug() << "Error - URL:" << url;
+        logDebug("Error - URL: " + url);
+        logDebug("Error message: " + reply->errorString());
 
         // Identify volume requests by URL pattern
         if (url.contains("/api/v1/pair_candles")) {
@@ -196,7 +236,7 @@ void MainWindow::replyFinished (QNetworkReply *reply)
 
         // Check if this is a volume data response by URL pattern
         QString url = reply->url().toString();
-        qDebug() << "Success - URL:" << url;
+        logDebug("Success - URL: " + url);
 
         if (url.contains("/api/v1/pair_candles")) {
             // Extract pair and timeframe from URL
@@ -204,10 +244,11 @@ void MainWindow::replyFinished (QNetworkReply *reply)
             QString pair = query.queryItemValue("pair").replace("%2F", "/").replace("%3A", ":");
             QString timeframe = query.queryItemValue("timeframe");
 
-            qDebug() << "Volume response for pair:" << pair << "timeframe:" << timeframe;
+            logDebug(QString("Volume response for pair: %1, timeframe: %2").arg(pair).arg(timeframe));
             volumeData2table(rawtable, pair, timeframe);
         }
         else if (rawtable.mid(2, 5) == "trade") {
+            logDebug("Trade data received, calling strat2table");
             strat2table(rawtable);
             ui->messages->clear();
         }
@@ -469,8 +510,10 @@ MainWindow::~MainWindow()
     */
 void MainWindow::combo_refresh(int comboindex)
 {
+    logDebug(QString("=== combo_refresh called, index: %1").arg(comboindex));
     m_runOnce = 0;
-    reload_model();
+    strat_download();  // Fetch data from newly selected server
+    // reload_model() will be called by replyFinished() after data is fetched
 }
 
 void MainWindow::on_settings_clicked()
