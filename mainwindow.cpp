@@ -196,10 +196,11 @@ void MainWindow::replyFinished (QNetworkReply *reply)
     if(reply->error())
     {
         QByteArray rawtable = reply->readAll();
-        qDebug() << "Error: " << reply->error() <<
-        ", Message: " << reply->errorString() <<
-        ", Code: " << reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() <<
-        ", Description: " << rawtable;
+        logDebug(QString("Error: %1, Message: %2, Code: %3, Description: %4")
+            .arg(reply->error())
+            .arg(reply->errorString())
+            .arg(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt())
+            .arg(QString(rawtable)));
 
         // Check if this was a volume request that failed
         QString url = reply->url().toString();
@@ -215,12 +216,12 @@ void MainWindow::replyFinished (QNetworkReply *reply)
 
             QString requestKey = pair + "_" + timeframe;
             m_pendingVolumePairs.remove(requestKey);
-            qDebug() << "Volume data fetch failed for" << pair << timeframe;
+            logDebug(QString("Volume data fetch failed for %1 %2").arg(pair).arg(timeframe));
 
             // Track completion even on failure, so trades can still be displayed
             m_volumeFetchesCompleted++;
             if (m_volumeFetchesCompleted >= m_totalVolumeFetches && m_totalVolumeFetches > 0) {
-                qDebug() << "All volume fetches completed (some failed), processing trades...";
+                logDebug("All volume fetches completed (some failed), processing trades...");
                 processParsedTrades();
             }
         } else {
@@ -377,12 +378,12 @@ void MainWindow::strat2table(QByteArray rawtable)
     }
     m_runOnce++;
 
-    qDebug() << "strat2table: Parsed" << m_parsedTrades.size() << "trades,"
-             << uniquePairs.size() << "unique pairs, currentTimeframe:" << currentTimeframe;
+    logDebug(QString("strat2table: Parsed %1 trades, %2 unique pairs, currentTimeframe: %3")
+        .arg(m_parsedTrades.size()).arg(uniquePairs.size()).arg(currentTimeframe));
 
     // Fetch volume data for unique pairs
     if (!uniquePairs.isEmpty() && !currentTimeframe.isEmpty()) {
-        qDebug() << "Fetching volume data for" << uniquePairs.size() << "pairs...";
+        logDebug(QString("Fetching volume data for %1 pairs...").arg(uniquePairs.size()));
         m_volumeFetchesCompleted = 0;
         m_totalVolumeFetches = 0; // Count actual fetches, not total pairs
 
@@ -399,17 +400,17 @@ void MainWindow::strat2table(QByteArray rawtable)
             fetchVolumeData(pair, currentTimeframe);
         }
 
-        qDebug() << "Initiated" << m_totalVolumeFetches << "volume fetches";
+        logDebug(QString("Initiated %1 volume fetches").arg(m_totalVolumeFetches));
 
         // If no fetches needed (all cached), process immediately
         if (m_totalVolumeFetches == 0) {
-            qDebug() << "All volume data cached, processing trades immediately";
+            logDebug("All volume data cached, processing trades immediately");
             processParsedTrades();
         }
         // Otherwise processParsedTrades() will be called when all volume fetches complete
     } else {
         // No volume data needed, process trades immediately
-        qDebug() << "Processing trades immediately (no volume fetch needed)";
+        logDebug("Processing trades immediately (no volume fetch needed)");
         processParsedTrades();
     }
 }
@@ -621,21 +622,22 @@ void MainWindow::fetchVolumeData(const QString& pair, const QString& timeframe, 
     request.setHeader(QNetworkRequest::ContentTypeHeader, QString("application/json"));
     request.setUrl(url);
 
-    qDebug() << "Fetching volume data from:" << url.toString();
+    logDebug("Fetching volume data from: " + url.toString());
     manager->get(request);
 }
 
 // Process volume data received from API
 void MainWindow::volumeData2table(QByteArray rawdata, const QString& pair, const QString& timeframe) {
-    qDebug() << "volumeData2table called for pair:" << pair << "timeframe:" << timeframe;
-    qDebug() << "Raw data size:" << rawdata.size() << "bytes";
+    logDebug(">>> ENTERED volumeData2table <<<");
+    logDebug(QString("volumeData2table called for pair: %1, timeframe: %2").arg(pair).arg(timeframe));
+    logDebug(QString("Raw data size: %1 bytes").arg(rawdata.size()));
 
     QJsonParseError parserError;
     QJsonDocument doc = QJsonDocument::fromJson(rawdata, &parserError);
 
     if (parserError.error != QJsonParseError::NoError) {
-        qDebug() << "Volume JSON parse error for" << pair << ":" << parserError.errorString();
-        qDebug() << "Raw data:" << rawdata.left(500); // Show first 500 chars
+        logDebug(QString("Volume JSON parse error for %1: %2").arg(pair).arg(parserError.errorString()));
+        logDebug(QString("Raw data: %1").arg(QString(rawdata.left(500))));
         return;
     }
 
@@ -643,12 +645,12 @@ void MainWindow::volumeData2table(QByteArray rawdata, const QString& pair, const
     QJsonArray dataArray = jsonObject["data"].toArray();
 
     if (dataArray.isEmpty()) {
-        qDebug() << "No volume data returned for pair:" << pair;
-        qDebug() << "JSON keys:" << jsonObject.keys();
+        logDebug(QString("No volume data returned for pair: %1").arg(pair));
+        logDebug(QString("JSON keys: %1").arg(jsonObject.keys().join(", ")));
         return;
     }
 
-    qDebug() << "Received" << dataArray.size() << "candles for" << pair;
+    logDebug(QString("Received %1 candles for %2").arg(dataArray.size()).arg(pair));
 
     VolumeDataContainer volumeData;
 
@@ -673,12 +675,13 @@ void MainWindow::volumeData2table(QByteArray rawdata, const QString& pair, const
     QString requestKey = pair + "_" + timeframe;
     m_pendingVolumePairs.remove(requestKey);
 
-    qDebug() << "Volume data cached for" << pair << ":" << volumeData.count() << "candles";
+    logDebug(QString("Volume data cached for %1: %2 candles").arg(pair).arg(volumeData.count()));
 
     // Track completion and process trades when all volume fetches are done
     m_volumeFetchesCompleted++;
+    logDebug(QString("Volume fetch completed: %1/%2").arg(m_volumeFetchesCompleted).arg(m_totalVolumeFetches));
     if (m_volumeFetchesCompleted >= m_totalVolumeFetches && m_totalVolumeFetches > 0) {
-        qDebug() << "All volume data fetched, processing trades...";
+        logDebug("All volume data fetched, processing trades...");
         processParsedTrades();
     }
 }
@@ -695,9 +698,10 @@ QString formatVolume(double volume) {
 }
 
 void MainWindow::processParsedTrades() {
-    qDebug() << "processParsedTrades: Processing" << m_parsedTrades.size() << "trades";
+    logDebug(">>> ENTERED processParsedTrades <<<");
+    logDebug(QString("processParsedTrades: Processing %1 trades").arg(m_parsedTrades.size()));
     qint64 timeframeMs = timeframeToMs(currentTimeframe);
-    qDebug() << "currentTimeframe:" << currentTimeframe << "-> timeframeMs:" << timeframeMs;
+    logDebug(QString("currentTimeframe: %1 -> timeframeMs: %2").arg(currentTimeframe).arg(timeframeMs));
 
     int tradesProcessed = 0;
     for (const ParsedTrade& trade : m_parsedTrades) {
@@ -705,11 +709,10 @@ void MainWindow::processParsedTrades() {
         VolumeDataContainer volumeData = VolumeDataCache::instance().getData(trade.pair, currentTimeframe);
 
         if (tradesProcessed < 3) { // Debug first 3 trades only
-            qDebug() << "Trade" << tradesProcessed << "- Pair:" << trade.pair
-                     << "Open timestamp:" << trade.open_timestamp
-                     << "Close timestamp:" << trade.close_timestamp;
-            qDebug() << "  Volume data cached:" << !volumeData.isEmpty()
-                     << "Candle count:" << volumeData.count();
+            logDebug(QString("Trade %1 - Pair: %2, Open timestamp: %3, Close timestamp: %4")
+                .arg(tradesProcessed).arg(trade.pair).arg(trade.open_timestamp).arg(trade.close_timestamp));
+            logDebug(QString("  Volume data cached: %1, Candle count: %2")
+                .arg(!volumeData.isEmpty()).arg(volumeData.count()));
         }
 
         double entryVolume = 0.0;
@@ -726,7 +729,7 @@ void MainWindow::processParsedTrades() {
             exitVolume = volumeData.getVolumeAtTimestamp(trade.close_timestamp, timeframeMs);
 
             if (tradesProcessed < 3) {
-                qDebug() << "  Entry volume:" << entryVolume << "Exit volume:" << exitVolume;
+                logDebug(QString("  Entry volume: %1, Exit volume: %2").arg(entryVolume).arg(exitVolume));
             }
 
             // Calculate volume ratio (entry volume compared to average)
@@ -769,7 +772,7 @@ void MainWindow::processParsedTrades() {
     // Clear parsed trades as they've been processed
     m_parsedTrades.clear();
 
-    qDebug() << "processParsedTrades: Built trademodel with" << trademodel.size() << "items (12 per trade)";
+    logDebug(QString("processParsedTrades: Built trademodel with %1 items (12 per trade)").arg(trademodel.size()));
 
     // Update the UI
     reload_model();
