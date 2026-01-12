@@ -232,10 +232,15 @@ void MainWindow::strat2table(QByteArray rawtable)
     int average = 0, rows = 0, addedrows = 0;
     m_modelDataList.clear();
     trademodel.clear();
+    m_parsedTrades.clear();
     strat = "";
     QJsonDocument cryptolist = QJsonDocument::fromJson(rawtable, &parserError);
     QJsonObject jsonObject = cryptolist.object();
     jsonArray = jsonObject["trades"].toArray();
+
+    // Collect unique pairs for volume data fetching
+    QSet<QString> uniquePairs;
+
     foreach (const QJsonValue & value, jsonArray) {
         QJsonObject data = value.toObject();
         rows++;
@@ -275,16 +280,23 @@ void MainWindow::strat2table(QByteArray rawtable)
             addedrows++;
             average=1;
         }
-        int trailingZeros = 2;
-        if (data["stake_amount"].toDouble() < 0.001) trailingZeros = 7;
-        if (data["stake_amount"].toDouble() < 0.1 && data["stake_amount"].toDouble() > 0.001) trailingZeros = 5;
 
-        // Note: opendate and closedate variables removed - they were unused
-        trademodel  << data["strategy"].toString() << data["open_date"].toString() << data["close_date"].toString() << data["pair"].toString()
-                << data["enter_tag"].toString() << data["exit_reason"].toString()
-                << QLocale(QLocale::English).toString(data["stake_amount"].toDouble(), 'F', trailingZeros)
-                << QLocale(QLocale::English).toString(data["profit_pct"].toDouble(), 'F', 2)
-                << QLocale(QLocale::English).toString(data["profit_abs"].toDouble(), 'F', trailingZeros); //
+        // Parse and store trade data for later processing
+        ParsedTrade trade;
+        trade.strategy = data["strategy"].toString();
+        trade.open_date = data["open_date"].toString();
+        trade.close_date = data["close_date"].toString();
+        trade.open_timestamp = data["open_timestamp"].toVariant().toLongLong();
+        trade.close_timestamp = data["close_timestamp"].toVariant().toLongLong();
+        trade.pair = data["pair"].toString();
+        trade.enter_tag = data["enter_tag"].toString();
+        trade.exit_reason = data["exit_reason"].toString();
+        trade.stake_amount = data["stake_amount"].toDouble();
+        trade.profit_pct = data["profit_pct"].toDouble();
+        trade.profit_abs = data["profit_abs"].toDouble();
+
+        m_parsedTrades.append(trade);
+        uniquePairs.insert(trade.pair);
     }
     if (!m_modelDataList.isEmpty())
     if (m_modelDataList[(addedrows - 1) * 7] != strat) {
@@ -303,7 +315,20 @@ void MainWindow::strat2table(QByteArray rawtable)
         m_modelDataList.append(QLocale(QLocale::English).toString(marketnow, 'F', 2));
     }
     m_runOnce++;
-    reload_model();
+
+    // Fetch volume data for unique pairs
+    if (!uniquePairs.isEmpty() && !currentTimeframe.isEmpty()) {
+        m_volumeFetchesCompleted = 0;
+        m_totalVolumeFetches = uniquePairs.count();
+
+        for (const QString& pair : uniquePairs) {
+            fetchVolumeData(pair, currentTimeframe);
+        }
+        // processParsedTrades() will be called when all volume fetches complete
+    } else {
+        // No volume data needed, process trades immediately
+        processParsedTrades();
+    }
 }
 
 
@@ -561,4 +586,84 @@ void MainWindow::volumeData2table(QByteArray rawdata, const QString& pair, const
     m_pendingVolumePairs.remove(requestKey);
 
     qDebug() << "Volume data cached for" << pair << ":" << volumeData.count() << "candles";
+
+    // Track completion and process trades when all volume fetches are done
+    m_volumeFetchesCompleted++;
+    if (m_volumeFetchesCompleted >= m_totalVolumeFetches && m_totalVolumeFetches > 0) {
+        qDebug() << "All volume data fetched, processing trades...";
+        processParsedTrades();
+    }
+}
+
+// Helper function to format volume with K/M suffix
+QString formatVolume(double volume) {
+    if (volume >= 1000000) {
+        return QLocale(QLocale::English).toString(volume / 1000000.0, 'f', 2) + "M";
+    } else if (volume >= 1000) {
+        return QLocale(QLocale::English).toString(volume / 1000.0, 'f', 2) + "K";
+    } else {
+        return QLocale(QLocale::English).toString(volume, 'f', 2);
+    }
+}
+
+void MainWindow::processParsedTrades() {
+    qint64 timeframeMs = timeframeToMs(currentTimeframe);
+
+    for (const ParsedTrade& trade : m_parsedTrades) {
+        // Get volume data from cache
+        VolumeDataContainer volumeData = VolumeDataCache::instance().getData(trade.pair, currentTimeframe);
+
+        double entryVolume = 0.0;
+        double exitVolume = 0.0;
+        double volumeRatio = 0.0;
+
+        QString entryVolumeStr = "N/A";
+        QString exitVolumeStr = "N/A";
+        QString volumeRatioStr = "N/A";
+
+        if (!volumeData.isEmpty()) {
+            // Get volumes at entry and exit timestamps
+            entryVolume = volumeData.getVolumeAtTimestamp(trade.open_timestamp, timeframeMs);
+            exitVolume = volumeData.getVolumeAtTimestamp(trade.close_timestamp, timeframeMs);
+
+            // Calculate volume ratio (entry volume compared to average)
+            volumeRatio = volumeData.getVolumeRatio(trade.open_timestamp, timeframeMs);
+
+            // Format values
+            if (entryVolume > 0) {
+                entryVolumeStr = formatVolume(entryVolume);
+            }
+            if (exitVolume > 0) {
+                exitVolumeStr = formatVolume(exitVolume);
+            }
+            if (volumeRatio > 0) {
+                volumeRatioStr = QLocale(QLocale::English).toString(volumeRatio, 'f', 2);
+            }
+        }
+
+        // Determine trailing zeros for stake and profit formatting
+        int trailingZeros = 2;
+        if (trade.stake_amount < 0.001) trailingZeros = 7;
+        if (trade.stake_amount < 0.1 && trade.stake_amount > 0.001) trailingZeros = 5;
+
+        // Append to trademodel with 12 fields (was 9 before)
+        trademodel << trade.strategy
+                   << trade.open_date
+                   << trade.close_date
+                   << trade.pair
+                   << trade.enter_tag
+                   << trade.exit_reason
+                   << QLocale(QLocale::English).toString(trade.stake_amount, 'F', trailingZeros)
+                   << QLocale(QLocale::English).toString(trade.profit_pct, 'F', 2)
+                   << QLocale(QLocale::English).toString(trade.profit_abs, 'F', trailingZeros)
+                   << entryVolumeStr
+                   << exitVolumeStr
+                   << volumeRatioStr;
+    }
+
+    // Clear parsed trades as they've been processed
+    m_parsedTrades.clear();
+
+    // Update the UI
+    reload_model();
 }

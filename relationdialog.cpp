@@ -15,7 +15,7 @@
 #include <QTextBlockFormat>
 #include <QAbstractTextDocumentLayout>
 
-int tablecolumns=9;
+int tablecolumns=12;
 relationDialog::relationDialog(QWidget *parent) :
     QDialog(parent),
     ui(new Ui::relationDialog)
@@ -34,6 +34,9 @@ relationDialog::relationDialog(QWidget *parent) :
     model->setHeaderData(5, Qt::Horizontal, "Stake", Qt::DisplayRole);
     model->setHeaderData(6, Qt::Horizontal, "Profit%", Qt::DisplayRole);
     model->setHeaderData(7, Qt::Horizontal, "Profit", Qt::DisplayRole);
+    model->setHeaderData(8, Qt::Horizontal, "Entry Vol", Qt::DisplayRole);
+    model->setHeaderData(9, Qt::Horizontal, "Exit Vol", Qt::DisplayRole);
+    model->setHeaderData(10, Qt::Horizontal, "Vol Ratio", Qt::DisplayRole);
     ui->tableView->setModel(model);
     ui->tableView->setSortingEnabled(true);
     ui->tableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
@@ -88,6 +91,10 @@ void relationDialog::load_model()
              if (col == 5) avrstake+=trademodel[i+1].toDouble();
          }
          if (col >= 6 && col < 8 && add) model->setData(index,trademodel[i+1].toDouble());
+         if (col >= 8 && col < tablecolumns - 1 && add) {
+             // Volume columns (Entry Vol, Exit Vol, Vol Ratio) - stored as strings
+             model->setData(index, trademodel[i+1]);
+         }
 
          // Only set alignment if within model column bounds
          if (col < tablecolumns - 1) {
@@ -181,14 +188,17 @@ void relationDialog::on_savePdfButton_clicked()
 
     // Set column width constraints (as percentages)
     QVector<QTextLength> columnWidths;
-    columnWidths << QTextLength(QTextLength::PercentageLength, 14)  // Date open
-                 << QTextLength(QTextLength::PercentageLength, 14)  // Date closed
-                 << QTextLength(QTextLength::PercentageLength, 11)  // Pair
-                 << QTextLength(QTextLength::PercentageLength, 11)  // Enter tag
-                 << QTextLength(QTextLength::PercentageLength, 13)  // Exit reason
-                 << QTextLength(QTextLength::PercentageLength, 11)  // Stake
-                 << QTextLength(QTextLength::PercentageLength, 13)  // Profit%
-                 << QTextLength(QTextLength::PercentageLength, 13); // Profit
+    columnWidths << QTextLength(QTextLength::PercentageLength, 11)  // Date open
+                 << QTextLength(QTextLength::PercentageLength, 11)  // Date closed
+                 << QTextLength(QTextLength::PercentageLength, 9)   // Pair
+                 << QTextLength(QTextLength::PercentageLength, 9)   // Enter tag
+                 << QTextLength(QTextLength::PercentageLength, 10)  // Exit reason
+                 << QTextLength(QTextLength::PercentageLength, 9)   // Stake
+                 << QTextLength(QTextLength::PercentageLength, 10)  // Profit%
+                 << QTextLength(QTextLength::PercentageLength, 10)  // Profit
+                 << QTextLength(QTextLength::PercentageLength, 9)   // Entry Vol
+                 << QTextLength(QTextLength::PercentageLength, 9)   // Exit Vol
+                 << QTextLength(QTextLength::PercentageLength, 7);  // Vol Ratio
     tableFormat.setColumnWidthConstraints(columnWidths);
 
     QTextTable *table = cursor.insertTable(rowCount + 1, colCount, tableFormat); // +1 for header

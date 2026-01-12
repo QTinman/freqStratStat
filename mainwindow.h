@@ -45,6 +45,23 @@ public:
     void volumeData2table(QByteArray rawdata, const QString& pair, const QString& timeframe);
     qint64 timeframeToMs(const QString& timeframe);
 
+    // Structure to temporarily hold parsed trade data
+    struct ParsedTrade {
+        QString strategy;
+        QString open_date;
+        QString close_date;
+        qint64 open_timestamp;
+        qint64 close_timestamp;
+        QString pair;
+        QString enter_tag;
+        QString exit_reason;
+        double stake_amount;
+        double profit_pct;
+        double profit_abs;
+    };
+
+    void processParsedTrades();
+
 public slots:
     void replyFinished (QNetworkReply *reply);
 
@@ -81,5 +98,6 @@ private:
     QString m_currentServer;
     int m_volumeFetchesCompleted;
     int m_totalVolumeFetches;
+    QVector<ParsedTrade> m_parsedTrades;  // Temporarily store trades while fetching volume data
 };
 #endif // MAINWINDOW_H
