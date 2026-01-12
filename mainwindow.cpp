@@ -714,12 +714,20 @@ void MainWindow::processParsedTrades() {
 
     int tradesProcessed = 0;
     for (const ParsedTrade& trade : m_parsedTrades) {
-        // Get volume data from cache
-        VolumeDataContainer volumeData = VolumeDataCache::instance().getData(trade.pair, currentTimeframe);
+        // Strip stake currency suffix for cache lookup to match how data was stored
+        // Data is cached with stripped pair name (e.g., "GUN/USDT") but trade.pair contains full format (e.g., "GUN/USDT:USDT")
+        QString cachePair = trade.pair;
+        int colonPos = cachePair.indexOf(':');
+        if (colonPos > 0) {
+            cachePair = cachePair.left(colonPos);
+        }
+
+        // Get volume data from cache using stripped pair name
+        VolumeDataContainer volumeData = VolumeDataCache::instance().getData(cachePair, currentTimeframe);
 
         if (tradesProcessed < 3) { // Debug first 3 trades only
-            logDebug(QString("Trade %1 - Pair: %2, Open timestamp: %3, Close timestamp: %4")
-                .arg(tradesProcessed).arg(trade.pair).arg(trade.open_timestamp).arg(trade.close_timestamp));
+            logDebug(QString("Trade %1 - Pair: %2 (cache key: %3), Open timestamp: %4, Close timestamp: %5")
+                .arg(tradesProcessed).arg(trade.pair).arg(cachePair).arg(trade.open_timestamp).arg(trade.close_timestamp));
             logDebug(QString("  Volume data cached: %1, Candle count: %2")
                 .arg(!volumeData.isEmpty()).arg(volumeData.count()));
         }
