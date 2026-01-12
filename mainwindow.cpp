@@ -10,6 +10,7 @@
 #include <QAbstractButton>
 #include <QPushButton>
 #include <QTimer>
+#include <QUrlQuery>
 
 // Global data shared with relationDialog (consider refactoring in future)
 QString appgroup = "stratreader";
@@ -162,14 +163,19 @@ void MainWindow::replyFinished (QNetworkReply *reply)
         ", Description: " << rawtable;
 
         // Check if this was a volume request that failed
-        QString requestType = reply->request().attribute(QNetworkRequest::User).toString();
-        qDebug() << "Error - Request type:" << requestType << "(empty:" << requestType.isEmpty() << ")";
-        if (requestType == "volume") {
-            QString pair = reply->request().attribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 1)).toString();
-            QString timeframe = reply->request().attribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 2)).toString();
+        QString url = reply->url().toString();
+        qDebug() << "Error - URL:" << url;
+
+        // Identify volume requests by URL pattern
+        if (url.contains("/api/v1/pair_candles")) {
+            // Extract pair and timeframe from URL
+            QUrlQuery query(reply->url());
+            QString pair = query.queryItemValue("pair").replace("%2F", "/").replace("%3A", ":");
+            QString timeframe = query.queryItemValue("timeframe");
+
             QString requestKey = pair + "_" + timeframe;
             m_pendingVolumePairs.remove(requestKey);
-            qDebug() << "Volume data fetch failed for" << pair;
+            qDebug() << "Volume data fetch failed for" << pair << timeframe;
 
             // Track completion even on failure, so trades can still be displayed
             m_volumeFetchesCompleted++;
@@ -188,13 +194,17 @@ void MainWindow::replyFinished (QNetworkReply *reply)
         reply->deleteLater();
         QByteArray rawtable = reply->readAll();
 
-        // Check if this is a volume data response
-        QString requestType = reply->request().attribute(QNetworkRequest::User).toString();
-        qDebug() << "Success - Request type:" << requestType << "(empty:" << requestType.isEmpty() << ")"
-                 << "URL:" << reply->url().toString();
-        if (requestType == "volume") {
-            QString pair = reply->request().attribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 1)).toString();
-            QString timeframe = reply->request().attribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 2)).toString();
+        // Check if this is a volume data response by URL pattern
+        QString url = reply->url().toString();
+        qDebug() << "Success - URL:" << url;
+
+        if (url.contains("/api/v1/pair_candles")) {
+            // Extract pair and timeframe from URL
+            QUrlQuery query(reply->url());
+            QString pair = query.queryItemValue("pair").replace("%2F", "/").replace("%3A", ":");
+            QString timeframe = query.queryItemValue("timeframe");
+
+            qDebug() << "Volume response for pair:" << pair << "timeframe:" << timeframe;
             volumeData2table(rawtable, pair, timeframe);
         }
         else if (rawtable.mid(2, 5) == "trade") {
@@ -568,14 +578,7 @@ void MainWindow::fetchVolumeData(const QString& pair, const QString& timeframe, 
     request.setHeader(QNetworkRequest::ContentTypeHeader, QString("application/json"));
     request.setUrl(url);
 
-    // Set custom property to identify this as a volume request
-    request.setAttribute(QNetworkRequest::User, "volume");
-    request.setAttribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 1), pair);
-    request.setAttribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 2), timeframe);
-
     qDebug() << "Fetching volume data from:" << url.toString();
-    qDebug() << "Request attributes set - User:" << request.attribute(QNetworkRequest::User).toString()
-             << "Pair:" << request.attribute(static_cast<QNetworkRequest::Attribute>(QNetworkRequest::User + 1)).toString();
     manager->get(request);
 }
 
