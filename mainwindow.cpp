@@ -169,6 +169,13 @@ void MainWindow::replyFinished (QNetworkReply *reply)
             QString requestKey = pair + "_" + timeframe;
             m_pendingVolumePairs.remove(requestKey);
             qDebug() << "Volume data fetch failed for" << pair;
+
+            // Track completion even on failure, so trades can still be displayed
+            m_volumeFetchesCompleted++;
+            if (m_volumeFetchesCompleted >= m_totalVolumeFetches && m_totalVolumeFetches > 0) {
+                qDebug() << "All volume fetches completed (some failed), processing trades...";
+                processParsedTrades();
+            }
         } else {
             ui->messages->setText("Error: " + reply->errorString());
         }
@@ -316,17 +323,39 @@ void MainWindow::strat2table(QByteArray rawtable)
     }
     m_runOnce++;
 
+    qDebug() << "strat2table: Parsed" << m_parsedTrades.size() << "trades,"
+             << uniquePairs.size() << "unique pairs, currentTimeframe:" << currentTimeframe;
+
     // Fetch volume data for unique pairs
     if (!uniquePairs.isEmpty() && !currentTimeframe.isEmpty()) {
+        qDebug() << "Fetching volume data for" << uniquePairs.size() << "pairs...";
         m_volumeFetchesCompleted = 0;
-        m_totalVolumeFetches = uniquePairs.count();
+        m_totalVolumeFetches = 0; // Count actual fetches, not total pairs
 
         for (const QString& pair : uniquePairs) {
+            // Check if we need to fetch (not cached, not already pending)
+            QString requestKey = pair + "_" + currentTimeframe;
+            bool needsFetch = !VolumeDataCache::instance().hasData(pair, currentTimeframe) &&
+                              !m_pendingVolumePairs.contains(requestKey);
+
+            if (needsFetch) {
+                m_totalVolumeFetches++;
+            }
+
             fetchVolumeData(pair, currentTimeframe);
         }
-        // processParsedTrades() will be called when all volume fetches complete
+
+        qDebug() << "Initiated" << m_totalVolumeFetches << "volume fetches";
+
+        // If no fetches needed (all cached), process immediately
+        if (m_totalVolumeFetches == 0) {
+            qDebug() << "All volume data cached, processing trades immediately";
+            processParsedTrades();
+        }
+        // Otherwise processParsedTrades() will be called when all volume fetches complete
     } else {
         // No volume data needed, process trades immediately
+        qDebug() << "Processing trades immediately (no volume fetch needed)";
         processParsedTrades();
     }
 }
@@ -607,6 +636,7 @@ QString formatVolume(double volume) {
 }
 
 void MainWindow::processParsedTrades() {
+    qDebug() << "processParsedTrades: Processing" << m_parsedTrades.size() << "trades";
     qint64 timeframeMs = timeframeToMs(currentTimeframe);
 
     for (const ParsedTrade& trade : m_parsedTrades) {
@@ -663,6 +693,8 @@ void MainWindow::processParsedTrades() {
 
     // Clear parsed trades as they've been processed
     m_parsedTrades.clear();
+
+    qDebug() << "processParsedTrades: Built trademodel with" << trademodel.size() << "items (12 per trade)";
 
     // Update the UI
     reload_model();
